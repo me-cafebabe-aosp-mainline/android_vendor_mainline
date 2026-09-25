@@ -3,8 +3,10 @@
 `bootsplash` is an optional, one-shot `/system_ext/bin/bootsplash` service for
 the interval before the graphics HAL takes over. It does not implement a HAL
 and does not restart after SurfaceFlinger starts. Enable it with
-`TARGET_ENABLE_BOOTSPLASH := true` in the product configuration. Do not enable
-it together with `fbkeyboard`, since both can write to the boot display.
+`TARGET_ENABLE_BOOTSPLASH := true` in the product configuration. It can be
+installed alongside `fbkeyboard`; init requests that the keyboard stop before
+starting the splash. This stop is asynchronous and does not lock the fbdev node;
+the two can briefly overlap if the keyboard is still exiting or restarts.
 Set this flag before including `device/mainline/common/mainline_common.mk`;
 the optional product fragments are evaluated as that file is included.
 
@@ -15,6 +17,8 @@ An uninterruptible kernel call can stall this wait; a display driver with this
 problem needs a different product-specific startup strategy. There is no
 seamless transition: the image may disappear when the composer takes over.
 No graphics HAL or system init files are changed here.
+The keyboard is not restarted when the splash stops; its existing console and
+SurfaceFlinger-state triggers still govern later starts.
 
 ## Configuration
 

@@ -12,6 +12,8 @@ The user builds and tests it; do not compile, run tests, or deploy locally.
   format, pitch, and visible area; never assume `fb0` is XRGB8888.
 - Auto fbdev must avoid a bound framebuffer console. Do not alter console
   bindings, palette, framebuffer mode, or display blanking.
+- Request that init stop fbkeyboard before starting the splash when both are
+  installed; do not assume fbdev nodes provide exclusive-open semantics.
 - Keep product selection in `device/mainline/common/optional/bootsplash/` and
   the executable, property, and sysfs policy in
   `device/mainline/common/sepolicy/private/`.

@@ -6,6 +6,7 @@ service bootsplash /system_ext/bin/bootsplash
     oneshot
 
 on post-fs
+    stop fbkeyboard
     start bootsplash
 
 on early-boot

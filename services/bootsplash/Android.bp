@@ -1,0 +1,22 @@
+//
+// SPDX-FileCopyrightText: The LineageOS Project
+// SPDX-License-Identifier: Apache-2.0
+//
+
+cc_binary {
+    name: "bootsplash",
+    srcs: [
+        "main.cpp",
+        "render.cpp",
+        "drm.cpp",
+        "fbdev.cpp",
+    ],
+    shared_libs: [
+        "libbase",
+        "libdrm",
+        "libft2",
+        "libyuv",
+    ],
+    init_rc: ["bootsplash.rc"],
+    system_ext_specific: true,
+}

@@ -1,0 +1,13 @@
+service bootsplash /system_ext/bin/bootsplash
+    class early_hal
+    user system
+    group graphics
+    disabled
+    oneshot
+
+on post-fs
+    start bootsplash
+
+on early-boot
+    stop bootsplash
+    wait_for_prop init.svc.bootsplash stopped

@@ -107,13 +107,15 @@ int main() {
         return 0;
     }
     canvas.pixels.resize(static_cast<size_t>(canvas.width) * canvas.height);
+    const int density = android::base::GetIntProperty<int>("ro.sf.lcd_density", 160, 1, 1000);
     auto progress = ReadProgress();
     while (true) {
         if (logo.pixels.empty() && bootsplash::LoadBmp(kProductImage, &logo)) {
             LOG(INFO) << "Using late-mounted product boot image";
         }
         bootsplash::Render(&canvas, logo.pixels.empty() ? nullptr : &logo, logo_x, logo_y,
-                           progress.fallback_text, progress.text, progress.percent, progress.color);
+                           progress.fallback_text, progress.text, progress.percent, progress.color,
+                           density);
         if (!output->Present(canvas)) {
             LOG(ERROR) << "Cannot present bootsplash";
             break;

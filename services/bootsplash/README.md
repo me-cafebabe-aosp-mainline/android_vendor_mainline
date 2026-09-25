@@ -27,6 +27,7 @@ All properties are optional and may be set by the device configuration:
 | `sys.bootsplash.color` | Bar color, decimal or `0xRRGGBB` (default `0x53b8df`). |
 | `sys.bootsplash.text` | Label above the progress bar. |
 | `sys.bootsplash.logo_text` | Final logo fallback, when neither image is usable. |
+| `ro.sf.lcd_density` | DPI used to size the progress bar and labels; read once when the display opens (default 160). |
 
 The logo source priority is the validated UEFI BGRT BMP at
 `/sys/firmware/acpi/bgrt/image`, an optional uncompressed 24/32-bit BMP at

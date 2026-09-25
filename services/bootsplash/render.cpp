@@ -182,7 +182,7 @@ bool LoadBmp(const std::string& path, Image* image) {
 
 void Render(Image* canvas, const Image* logo, int logo_x, int logo_y,
             const std::string& fallback_text, const std::string& progress_text, int percent,
-            uint32_t color, int density) {
+            uint32_t foreground_color, uint32_t background_color, int density) {
     if (!canvas || canvas->width <= 0 || canvas->height <= 0 || canvas->width > INT32_MAX / 4 ||
         uint64_t(canvas->width) * canvas->height > canvas->pixels.size())
         return;
@@ -191,7 +191,8 @@ void Render(Image* canvas, const Image* logo, int logo_x, int logo_y,
     density = std::clamp(density, 1, 1000);
     const auto dp = [density](int pixels) { return (pixels * density + 80) / 160; };
     std::fill(canvas->pixels.begin(), canvas->pixels.begin() + size_t(w) * h, 0xff080b12u);
-    color = 0xff000000u | (color & 0x00ffffffu);
+    foreground_color = 0xff000000u | (foreground_color & 0x00ffffffu);
+    background_color = 0xff000000u | (background_color & 0x00ffffffu);
 
     bool has_logo = logo && logo->width > 0 && logo->height > 0 && logo->width <= INT32_MAX / 4 &&
                     uint64_t(logo->width) * logo->height <= logo->pixels.size();
@@ -245,9 +246,9 @@ void Render(Image* canvas, const Image* logo, int logo_x, int logo_y,
     int64_t bar_x = (w - bar_width) / 2;
     int64_t bar_y = int64_t(h) * 3 / 4;
     int64_t bar_height = std::max(1, dp(12));
-    FillRect(canvas, bar_x, bar_y, bar_width, bar_height, 0xff30343bu);
+    FillRect(canvas, bar_x, bar_y, bar_width, bar_height, background_color);
     FillRect(canvas, bar_x, bar_y, bar_width * std::clamp(percent, 0, 100) / 100, bar_height,
-             color);
+             foreground_color);
     DrawText(canvas, face, progress_text, static_cast<int>(bar_y - dp(12)), 0xffeeeeeeu);
     DrawText(canvas, face, std::to_string(std::clamp(percent, 0, 100)) + "%",
              static_cast<int>(std::min<int64_t>(INT32_MAX, bar_y + dp(42))), 0xffeeeeeeu);

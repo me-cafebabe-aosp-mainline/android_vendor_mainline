@@ -32,22 +32,27 @@ int ReadOffset(const char* path) {
 
 struct Progress {
     int percent;
-    uint32_t color;
+    uint32_t foreground_color;
+    uint32_t background_color;
     std::string text;
     std::string fallback_text;
 
     bool operator==(const Progress& other) const {
-        return percent == other.percent && color == other.color && text == other.text &&
+        return percent == other.percent && foreground_color == other.foreground_color &&
+               background_color == other.background_color && text == other.text &&
                fallback_text == other.fallback_text;
     }
 };
 
 Progress ReadProgress() {
-    uint32_t color = 0x53b8df;
-    const std::string value = android::base::GetProperty("sys.bootsplash.color", "");
-    uint32_t parsed;
-    if (android::base::ParseUint(value, &parsed, uint32_t(0xffffff))) color = parsed;
-    return {android::base::GetIntProperty<int>("sys.bootsplash.percent", 0, 0, 100), color,
+    const auto read_color = [](const char* key, uint32_t fallback) {
+        uint32_t parsed;
+        const std::string value = android::base::GetProperty(key, "");
+        return android::base::ParseUint(value, &parsed, uint32_t(0xffffff)) ? parsed : fallback;
+    };
+    return {android::base::GetIntProperty<int>("sys.bootsplash.percent", 0, 0, 100),
+            read_color("sys.bootsplash.color", 0x53b8df),
+            read_color("sys.bootsplash.background_color", 0x30343b),
             android::base::GetProperty("sys.bootsplash.text", ""),
             android::base::GetProperty("sys.bootsplash.logo_text", "")};
 }
@@ -114,8 +119,8 @@ int main() {
             LOG(INFO) << "Using late-mounted product boot image";
         }
         bootsplash::Render(&canvas, logo.pixels.empty() ? nullptr : &logo, logo_x, logo_y,
-                           progress.fallback_text, progress.text, progress.percent, progress.color,
-                           density);
+                           progress.fallback_text, progress.text, progress.percent,
+                           progress.foreground_color, progress.background_color, density);
         if (!output->Present(canvas)) {
             LOG(ERROR) << "Cannot present bootsplash";
             break;

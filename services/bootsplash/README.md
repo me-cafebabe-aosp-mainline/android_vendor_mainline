@@ -24,7 +24,8 @@ All properties are optional and may be set by the device configuration:
 | --- | --- |
 | `sys.bootsplash.device` | Explicit `/dev/dri/cardN`, `/dev/graphics/fbN`, or `/dev/fbN`; when empty, try available DRM cards then fbdev nodes. |
 | `sys.bootsplash.percent` | Integer from 0 to 100 (invalid values display 0). |
-| `sys.bootsplash.color` | Bar color, decimal or `0xRRGGBB` (default `0x53b8df`). |
+| `sys.bootsplash.color` | Progress foreground color, decimal or `0xRRGGBB` (default `0x53b8df`). |
+| `sys.bootsplash.background_color` | Progress background color, decimal or `0xRRGGBB` (default `0x30343b`). |
 | `sys.bootsplash.text` | Label above the progress bar. |
 | `sys.bootsplash.logo_text` | Final logo fallback, when neither image is usable. |
 | `ro.sf.lcd_density` | DPI used to size the progress bar and labels; read once when the display opens (default 160). |

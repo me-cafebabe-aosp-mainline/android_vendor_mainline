@@ -22,7 +22,7 @@ struct Image {
 bool LoadBmp(const std::string& path, Image* image);
 void Render(Image* canvas, const Image* logo, int logo_x, int logo_y,
             const std::string& fallback_text, const std::string& progress_text, int percent,
-            uint32_t color, int density);
+            uint32_t foreground_color, uint32_t background_color, int density);
 
 class Output {
    public:

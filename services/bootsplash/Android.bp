@@ -17,6 +17,10 @@ cc_binary {
         "libft2",
         "libyuv",
     ],
-    init_rc: ["bootsplash.rc"],
+    init_rc: select(soong_config_variable("bootsplash", "use_minimal_init_rc"), {
+        true: ["bootsplash_minimal.rc"],
+        default: ["bootsplash.rc"],
+    }),
     system_ext_specific: true,
+    bootstrap: true,
 }

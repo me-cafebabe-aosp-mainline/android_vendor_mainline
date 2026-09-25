@@ -1,0 +1,6 @@
+service bootsplash /system_ext/bin/bootsplash
+    class early_hal
+    user system
+    group graphics
+    disabled
+    oneshot

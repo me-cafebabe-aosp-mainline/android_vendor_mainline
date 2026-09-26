@@ -76,8 +76,8 @@ std::unique_ptr<bootsplash::Output> OpenOutput() {
 
 }  // namespace
 
-int main() {
-    android::base::InitLogging(nullptr);
+int main(int, char* argv[]) {
+    android::base::InitLogging(argv, &android::base::KernelLogger);
     std::unique_ptr<bootsplash::Output> output;
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
     do {

@@ -34,13 +34,14 @@ struct Progress {
     int percent;
     uint32_t foreground_color;
     uint32_t background_color;
+    uint32_t canvas_color;
     std::string text;
     std::string fallback_text;
 
     bool operator==(const Progress& other) const {
         return percent == other.percent && foreground_color == other.foreground_color &&
-               background_color == other.background_color && text == other.text &&
-               fallback_text == other.fallback_text;
+               background_color == other.background_color && canvas_color == other.canvas_color &&
+               text == other.text && fallback_text == other.fallback_text;
     }
 };
 
@@ -53,6 +54,7 @@ Progress ReadProgress() {
     return {android::base::GetIntProperty<int>("sys.bootsplash.percent", 0, 0, 100),
             read_color("sys.bootsplash.color", 0x53b8df),
             read_color("sys.bootsplash.background_color", 0x30343b),
+            read_color("sys.bootsplash.canvas_color", 0x080b12),
             android::base::GetProperty("sys.bootsplash.text", ""),
             android::base::GetProperty("sys.bootsplash.logo_text", "")};
 }
@@ -120,7 +122,8 @@ int main(int, char* argv[]) {
         }
         bootsplash::Render(&canvas, logo.pixels.empty() ? nullptr : &logo, logo_x, logo_y,
                            progress.fallback_text, progress.text, progress.percent,
-                           progress.foreground_color, progress.background_color, density);
+                           progress.foreground_color, progress.background_color,
+                           progress.canvas_color, density);
         if (!output->Present(canvas)) {
             LOG(ERROR) << "Cannot present bootsplash";
             break;

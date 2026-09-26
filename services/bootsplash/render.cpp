@@ -182,7 +182,8 @@ bool LoadBmp(const std::string& path, Image* image) {
 
 void Render(Image* canvas, const Image* logo, int logo_x, int logo_y,
             const std::string& fallback_text, const std::string& progress_text, int percent,
-            uint32_t foreground_color, uint32_t background_color, int density) {
+            uint32_t foreground_color, uint32_t background_color, uint32_t canvas_color,
+            int density) {
     if (!canvas || canvas->width <= 0 || canvas->height <= 0 || canvas->width > INT32_MAX / 4 ||
         uint64_t(canvas->width) * canvas->height > canvas->pixels.size())
         return;
@@ -190,7 +191,8 @@ void Render(Image* canvas, const Image* logo, int logo_x, int logo_y,
     const int h = canvas->height;
     density = std::clamp(density, 1, 1000);
     const auto dp = [density](int pixels) { return (pixels * density + 80) / 160; };
-    std::fill(canvas->pixels.begin(), canvas->pixels.begin() + size_t(w) * h, 0xff080b12u);
+    std::fill(canvas->pixels.begin(), canvas->pixels.begin() + size_t(w) * h,
+              0xff000000u | (canvas_color & 0x00ffffffu));
     foreground_color = 0xff000000u | (foreground_color & 0x00ffffffu);
     background_color = 0xff000000u | (background_color & 0x00ffffffu);
 

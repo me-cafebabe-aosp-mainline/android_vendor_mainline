@@ -36,13 +36,15 @@ struct Progress {
     uint32_t foreground_color;
     uint32_t background_color;
     uint32_t canvas_color;
+    bool canvas_color_configured;
     std::string text;
     std::string fallback_text;
 
     bool operator==(const Progress& other) const {
         return percent == other.percent && foreground_color == other.foreground_color &&
                background_color == other.background_color && canvas_color == other.canvas_color &&
-               text == other.text && fallback_text == other.fallback_text;
+               canvas_color_configured == other.canvas_color_configured && text == other.text &&
+               fallback_text == other.fallback_text;
     }
 };
 
@@ -52,10 +54,15 @@ Progress ReadProgress() {
         const std::string value = android::base::GetProperty(key, "");
         return android::base::ParseUint(value, &parsed, uint32_t(0xffffff)) ? parsed : fallback;
     };
+    uint32_t canvas_color = 0x080b12;
+    bool canvas_color_configured =
+        android::base::ParseUint(android::base::GetProperty("sys.bootsplash.canvas_color", ""),
+                                 &canvas_color, uint32_t(0xffffff));
     return {android::base::GetIntProperty<int>("sys.bootsplash.percent", 0, 0, 100),
             read_color("sys.bootsplash.color", 0x53b8df),
             read_color("sys.bootsplash.background_color", 0x30343b),
-            read_color("sys.bootsplash.canvas_color", 0x080b12),
+            canvas_color,
+            canvas_color_configured,
             android::base::GetProperty("sys.bootsplash.text", ""),
             android::base::GetProperty("sys.bootsplash.logo_text", "")};
 }
@@ -96,13 +103,16 @@ int main(int, char* argv[]) {
     bootsplash::Image logo;
     int logo_x = -1;
     int logo_y = -1;
+    bool bmp_logo = false;
     if (bootsplash::LoadBmp(kBgrtImage, &logo)) {
+        bmp_logo = true;
         logo_x = ReadOffset("/sys/firmware/acpi/bgrt/xoffset");
         logo_y = ReadOffset("/sys/firmware/acpi/bgrt/yoffset");
         LOG(INFO) << "Using BGRT boot image";
     } else if (bootsplash::LoadPng(kProductPng, &logo)) {
         LOG(INFO) << "Using product PNG boot image";
     } else if (bootsplash::LoadBmp(kProductImage, &logo)) {
+        bmp_logo = true;
         LOG(INFO) << "Using product BMP boot image";
     } else {
         LOG(INFO) << "Using property boot text";
@@ -124,13 +134,14 @@ int main(int, char* argv[]) {
             if (bootsplash::LoadPng(kProductPng, &logo)) {
                 LOG(INFO) << "Using product PNG boot image";
             } else if (bootsplash::LoadBmp(kProductImage, &logo)) {
+                bmp_logo = true;
                 LOG(INFO) << "Using product BMP boot image";
             }
         }
-        bootsplash::Render(&canvas, logo.pixels.empty() ? nullptr : &logo, logo_x, logo_y,
-                           progress.fallback_text, progress.text, progress.percent,
-                           progress.foreground_color, progress.background_color,
-                           progress.canvas_color, density);
+        bootsplash::Render(
+            &canvas, logo.pixels.empty() ? nullptr : &logo, logo_x, logo_y, progress.fallback_text,
+            progress.text, progress.percent, progress.foreground_color, progress.background_color,
+            bmp_logo && !progress.canvas_color_configured ? 0 : progress.canvas_color, density);
         if (!output->Present(canvas)) {
             LOG(ERROR) << "Cannot present bootsplash";
             break;

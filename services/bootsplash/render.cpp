@@ -223,7 +223,7 @@ bool LoadPng(const std::string& path, Image* image) {
     return true;
 }
 
-void Render(Image* canvas, const Image* logo, int logo_x, int logo_y,
+void Render(Image* canvas, const Image* logo, int logo_x, int logo_y, bool bgrt_logo,
             const std::string& fallback_text, const std::string& progress_text, int percent,
             uint32_t foreground_color, uint32_t background_color, uint32_t canvas_color,
             int density) {
@@ -267,7 +267,8 @@ void Render(Image* canvas, const Image* logo, int logo_x, int logo_y,
         }
         if (has_logo) {
             int x = logo_x >= 0 && int64_t(logo_x) + draw_w <= w ? logo_x : (w - draw_w) / 2;
-            int y = logo_y >= 0 && int64_t(logo_y) + draw_h <= h ? logo_y : (h - draw_h) / 2;
+            int y = bgrt_logo ? (h - draw_h) / 2 : std::clamp(h / 3 - draw_h / 2, 0, h - draw_h);
+            if (logo_y >= 0 && int64_t(logo_y) + draw_h <= h) y = logo_y;
             for (int row = 0; row < draw_h; ++row) {
                 for (int col = 0; col < draw_w; ++col) {
                     uint32_t src = pixels[size_t(row) * draw_w + col];
@@ -299,7 +300,13 @@ void Render(Image* canvas, const Image* logo, int logo_x, int logo_y,
             }
         }
     }
-    if (!has_logo) DrawText(canvas, face, fallback_text, h / 2, 0xffeeeeeeu);
+    if (!has_logo) {
+        int text_baseline = bgrt_logo ? h / 2 : h / 3;
+        if (face) {
+            text_baseline += (face->size->metrics.ascender + face->size->metrics.descender) >> 7;
+        }
+        DrawText(canvas, face, fallback_text, text_baseline, 0xffeeeeeeu);
+    }
 
     int64_t bar_width = std::min<int64_t>(dp(480), std::max<int64_t>(0, int64_t(w) - dp(32)));
     int64_t bar_x = (w - bar_width) / 2;

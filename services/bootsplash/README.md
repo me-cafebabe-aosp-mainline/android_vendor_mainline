@@ -41,7 +41,9 @@ The logo source priority is the validated UEFI BGRT BMP at
 `/product/etc/bootsplash.bmp`, then `sys.bootsplash.logo_text`. Transparent PNG
 pixels are blended over the canvas background. A late-mounted product image
 is retried while the service runs. BGRT x/y offsets
-are used if the logo fits at that location; otherwise it is centered. Images
+are used if the logo fits at that location; otherwise it is centered. Product
+images and fallback logo text are centered around one-third of the screen height,
+in the upper half; images are clamped to stay visible. Images
 larger than the output are scaled to fit. The product supplies its optional PNG
 or BMP and its product package entry. A readable `/system/fonts/Roboto-Regular.ttf`
 provides Unicode glyphs; if absent, image and progress bar still appear but

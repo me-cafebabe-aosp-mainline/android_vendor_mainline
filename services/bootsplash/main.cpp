@@ -103,8 +103,10 @@ int main(int, char* argv[]) {
     bootsplash::Image logo;
     int logo_x = -1;
     int logo_y = -1;
+    bool bgrt_logo = false;
     bool bmp_logo = false;
     if (bootsplash::LoadBmp(kBgrtImage, &logo)) {
+        bgrt_logo = true;
         bmp_logo = true;
         logo_x = ReadOffset("/sys/firmware/acpi/bgrt/xoffset");
         logo_y = ReadOffset("/sys/firmware/acpi/bgrt/yoffset");
@@ -139,8 +141,9 @@ int main(int, char* argv[]) {
             }
         }
         bootsplash::Render(
-            &canvas, logo.pixels.empty() ? nullptr : &logo, logo_x, logo_y, progress.fallback_text,
-            progress.text, progress.percent, progress.foreground_color, progress.background_color,
+            &canvas, logo.pixels.empty() ? nullptr : &logo, logo_x, logo_y, bgrt_logo,
+            progress.fallback_text, progress.text, progress.percent, progress.foreground_color,
+            progress.background_color,
             bmp_logo && !progress.canvas_color_configured ? 0 : progress.canvas_color, density);
         if (!output->Present(canvas)) {
             LOG(ERROR) << "Cannot present bootsplash";

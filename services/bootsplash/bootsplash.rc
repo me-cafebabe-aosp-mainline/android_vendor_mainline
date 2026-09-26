@@ -5,7 +5,7 @@ service bootsplash /system_ext/bin/bootsplash
     disabled
     oneshot
 
-on post-fs
+on late-init
     stop fbkeyboard
     start bootsplash
 

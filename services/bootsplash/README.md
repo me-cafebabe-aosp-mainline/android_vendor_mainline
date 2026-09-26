@@ -10,7 +10,7 @@ the two can briefly overlap if the keyboard is still exiting or restarts.
 Set this flag before including `device/mainline/common/mainline_common.mk`;
 the optional product fragments are evaluated as that file is included.
 
-The init RC starts it on `post-fs` and stops it on `early-boot`, before the
+The init RC starts it on `late-init` and stops it on `early-boot`, before the
 platform's `boot` action starts the HAL class. It waits for the service to
 reach `stopped` before continuing init actions so DRM master is released.
 An uninterruptible kernel call can stall this wait; a display driver with this

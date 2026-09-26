@@ -116,7 +116,7 @@ int main() {
     auto progress = ReadProgress();
     while (true) {
         if (logo.pixels.empty() && bootsplash::LoadBmp(kProductImage, &logo)) {
-            LOG(INFO) << "Using late-mounted product boot image";
+            LOG(INFO) << "Using product boot image";
         }
         bootsplash::Render(&canvas, logo.pixels.empty() ? nullptr : &logo, logo_x, logo_y,
                            progress.fallback_text, progress.text, progress.percent,

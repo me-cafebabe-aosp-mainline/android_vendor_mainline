@@ -17,11 +17,25 @@
 #include FT_FREETYPE_H
 #include <libyuv/convert_argb.h>
 #include <libyuv/scale_argb.h>
+#include <png.h>
 
 namespace bootsplash {
 namespace {
 
-constexpr size_t kMaxBmpSize = 16 * 1024 * 1024;
+constexpr size_t kMaxImageSize = 16 * 1024 * 1024;
+constexpr size_t kMaxDecodedBytes = 32 * 1024 * 1024;
+
+bool ReadImageBytes(const std::string& path, std::vector<uint8_t>* bytes) {
+    std::ifstream file(path, std::ios::binary);
+    if (!file) return false;
+    std::array<char, 8192> chunk;
+    while (file.read(chunk.data(), chunk.size()) || file.gcount() != 0) {
+        size_t count = static_cast<size_t>(file.gcount());
+        if (count > kMaxImageSize - bytes->size()) return false;
+        bytes->insert(bytes->end(), chunk.data(), chunk.data() + count);
+    }
+    return file.eof();
+}
 
 uint16_t Le16(const uint8_t* p) { return uint16_t(p[0]) | (uint16_t(p[1]) << 8); }
 
@@ -119,16 +133,9 @@ void FillRect(Image* canvas, int64_t x, int64_t y, int64_t width, int64_t height
 
 bool LoadBmp(const std::string& path, Image* image) {
     if (!image) return false;
-    std::ifstream file(path, std::ios::binary);
-    if (!file) return false;
     std::vector<uint8_t> bytes;
-    std::array<char, 8192> chunk;
-    while (file.read(chunk.data(), chunk.size()) || file.gcount() != 0) {
-        size_t count = static_cast<size_t>(file.gcount());
-        if (count > kMaxBmpSize - bytes.size()) return false;
-        bytes.insert(bytes.end(), chunk.data(), chunk.data() + count);
-    }
-    if (!file.eof() || bytes.size() < 54 || bytes[0] != 'B' || bytes[1] != 'M') return false;
+    if (!ReadImageBytes(path, &bytes) || bytes.size() < 54 || bytes[0] != 'B' || bytes[1] != 'M')
+        return false;
 
     uint32_t file_size = Le32(bytes.data() + 2);
     uint32_t pixel_offset = Le32(bytes.data() + 10);
@@ -180,6 +187,42 @@ bool LoadBmp(const std::string& path, Image* image) {
     return true;
 }
 
+bool LoadPng(const std::string& path, Image* image) {
+    if (!image) return false;
+    std::vector<uint8_t> bytes;
+    if (!ReadImageBytes(path, &bytes) || bytes.empty()) return false;
+
+    png_image png{};
+    png.version = PNG_IMAGE_VERSION;
+    if (!png_image_begin_read_from_memory(&png, bytes.data(), bytes.size())) {
+        png_image_free(&png);
+        return false;
+    }
+    const uint64_t count = uint64_t(png.width) * png.height;
+    if (!png.width || !png.height || png.width > 8192 || png.height > 8192 ||
+        count > kMaxDecodedBytes / sizeof(uint32_t)) {
+        png_image_free(&png);
+        return false;
+    }
+    png.format = PNG_FORMAT_RGBA;
+    Image decoded;
+    decoded.width = static_cast<int>(png.width);
+    decoded.height = static_cast<int>(png.height);
+    decoded.pixels.resize(static_cast<size_t>(count));
+    if (!png_image_finish_read(&png, nullptr, decoded.pixels.data(), 0, nullptr)) {
+        png_image_free(&png);
+        return false;
+    }
+    png_image_free(&png);
+    for (uint32_t& pixel : decoded.pixels) {
+        const auto* rgba = reinterpret_cast<const uint8_t*>(&pixel);
+        pixel = (uint32_t(rgba[3]) << 24) | (uint32_t(rgba[0]) << 16) | (uint32_t(rgba[1]) << 8) |
+                rgba[2];
+    }
+    *image = std::move(decoded);
+    return true;
+}
+
 void Render(Image* canvas, const Image* logo, int logo_x, int logo_y,
             const std::string& fallback_text, const std::string& progress_text, int percent,
             uint32_t foreground_color, uint32_t background_color, uint32_t canvas_color,
@@ -226,8 +269,22 @@ void Render(Image* canvas, const Image* logo, int logo_x, int logo_y,
             int x = logo_x >= 0 && int64_t(logo_x) + draw_w <= w ? logo_x : (w - draw_w) / 2;
             int y = logo_y >= 0 && int64_t(logo_y) + draw_h <= h ? logo_y : (h - draw_h) / 2;
             for (int row = 0; row < draw_h; ++row) {
-                std::copy_n(pixels + size_t(row) * draw_w, draw_w,
-                            canvas->pixels.begin() + size_t(y + row) * w + x);
+                for (int col = 0; col < draw_w; ++col) {
+                    uint32_t src = pixels[size_t(row) * draw_w + col];
+                    uint32_t& dst = canvas->pixels[size_t(y + row) * w + x + col];
+                    unsigned alpha = src >> 24;
+                    if (alpha == 255) {
+                        dst = src;
+                    } else if (alpha != 0) {
+                        unsigned inv = 255 - alpha;
+                        unsigned red =
+                            (((src >> 16) & 255) * alpha + ((dst >> 16) & 255) * inv + 127) / 255;
+                        unsigned green =
+                            (((src >> 8) & 255) * alpha + ((dst >> 8) & 255) * inv + 127) / 255;
+                        unsigned blue = ((src & 255) * alpha + (dst & 255) * inv + 127) / 255;
+                        dst = 0xff000000u | (red << 16) | (green << 8) | blue;
+                    }
+                }
             }
         }
     }

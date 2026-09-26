@@ -21,6 +21,7 @@
 namespace {
 
 constexpr char kBgrtImage[] = "/sys/firmware/acpi/bgrt/image";
+constexpr char kProductPng[] = "/product/etc/bootsplash.png";
 constexpr char kProductImage[] = "/product/etc/bootsplash.bmp";
 
 int ReadOffset(const char* path) {
@@ -99,8 +100,10 @@ int main(int, char* argv[]) {
         logo_x = ReadOffset("/sys/firmware/acpi/bgrt/xoffset");
         logo_y = ReadOffset("/sys/firmware/acpi/bgrt/yoffset");
         LOG(INFO) << "Using BGRT boot image";
+    } else if (bootsplash::LoadPng(kProductPng, &logo)) {
+        LOG(INFO) << "Using product PNG boot image";
     } else if (bootsplash::LoadBmp(kProductImage, &logo)) {
-        LOG(INFO) << "Using product boot image";
+        LOG(INFO) << "Using product BMP boot image";
     } else {
         LOG(INFO) << "Using property boot text";
     }
@@ -117,8 +120,12 @@ int main(int, char* argv[]) {
     const int density = android::base::GetIntProperty<int>("ro.sf.lcd_density", 160, 1, 1000);
     auto progress = ReadProgress();
     while (true) {
-        if (logo.pixels.empty() && bootsplash::LoadBmp(kProductImage, &logo)) {
-            LOG(INFO) << "Using product boot image";
+        if (logo.pixels.empty()) {
+            if (bootsplash::LoadPng(kProductPng, &logo)) {
+                LOG(INFO) << "Using product PNG boot image";
+            } else if (bootsplash::LoadBmp(kProductImage, &logo)) {
+                LOG(INFO) << "Using product BMP boot image";
+            }
         }
         bootsplash::Render(&canvas, logo.pixels.empty() ? nullptr : &logo, logo_x, logo_y,
                            progress.fallback_text, progress.text, progress.percent,

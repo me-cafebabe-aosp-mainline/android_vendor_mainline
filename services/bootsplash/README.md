@@ -36,12 +36,14 @@ All properties are optional and may be set by the device configuration:
 | `ro.sf.lcd_density` | DPI used to size the progress bar and labels; read once when the display opens (default 160). |
 
 The logo source priority is the validated UEFI BGRT BMP at
-`/sys/firmware/acpi/bgrt/image`, an optional uncompressed 24/32-bit BMP at
-`/product/etc/bootsplash.bmp`, then `sys.bootsplash.logo_text`. A late-mounted
-product image is retried while the service runs. BGRT x/y offsets
+`/sys/firmware/acpi/bgrt/image`, an optional PNG at
+`/product/etc/bootsplash.png`, an uncompressed 24/32-bit BMP at
+`/product/etc/bootsplash.bmp`, then `sys.bootsplash.logo_text`. Transparent PNG
+pixels are blended over the canvas background. A late-mounted product image
+is retried while the service runs. BGRT x/y offsets
 are used if the logo fits at that location; otherwise it is centered. Images
-larger than the output are scaled to fit. The product supplies the optional BMP
-and its product package entry. A readable `/system/fonts/Roboto-Regular.ttf`
+larger than the output are scaled to fit. The product supplies its optional PNG
+or BMP and its product package entry. A readable `/system/fonts/Roboto-Regular.ttf`
 provides Unicode glyphs; if absent, image and progress bar still appear but
 the text cannot be rendered. Properties are sampled every 100 ms while running.
 

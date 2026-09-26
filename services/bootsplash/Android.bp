@@ -15,6 +15,7 @@ cc_binary {
         "libbase",
         "libdrm",
         "libft2",
+        "libpng",
         "libyuv",
     ],
     init_rc: select(soong_config_variable("bootsplash", "use_minimal_init_rc"), {

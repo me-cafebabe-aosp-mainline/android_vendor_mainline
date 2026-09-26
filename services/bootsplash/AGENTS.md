@@ -6,8 +6,8 @@ The user builds and tests it; do not compile, run tests, or deploy locally.
 
 - Do not write after the graphics HAL owns the display or change a HAL to make
   the splash work. Init stops this service at early-boot.
-- BGRT, product BMP, and property text are fallbacks in that order. Validate
-  all BMP dimensions and bounds before asking libyuv to convert pixels.
+- BGRT, product PNG, product BMP, and property text are fallbacks in that
+  order. Bound compressed and decoded images, and composite PNG alpha.
 - `Image::pixels` holds 0xAARRGGBB. Every backend must map its actual output
   format, pitch, and visible area; never assume `fb0` is XRGB8888.
 - Auto fbdev must avoid a bound framebuffer console. Do not alter console

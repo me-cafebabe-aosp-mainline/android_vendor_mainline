@@ -22,8 +22,10 @@ of the repo you work in, then the docs it points to.
  platform          AOSP / LineageOS, kernel configs, third party deps
 ```
 
-`device/mainline/generic` is a separate, UEFI based tree on top of
-`common`. Each `-ext` repo is an optional counterpart that the
+`device/mainline/generic` is a separate tree on top of `common`, for
+any device whose kernel can boot and whose hardware works through
+drivers (`generic_init` finds the partitions, `hardware_detect` the
+hardware). Each `-ext` repo is an optional counterpart that the
 non-ext repo includes when present.
 
 ## Core repositories

@@ -1,16 +1,17 @@
 # Review
 
-Changes getting submitted to the mainline device repositories hosted in
-LineageOS organization must pass review.
+Changes to the mainline device repositories must pass review before
+they are merged.
 
-We use [LineageOS Gerrit](https://review.lineageos.org) for reviewing the changes.
+Changes are sent as pull requests to the repositories in the
+[me-cafebabe-aosp-mainline](https://github.com/me-cafebabe-aosp-mainline)
+GitHub organization. A maintainer reviews each one.
 
-Each change has two kind of votes:
+A change ends in one of three states:
 
-- `Code-Review`: Can be voted with `-2` `-1` `+1` `+2`.
-- `Verified`: Can be voted with `-1` `+1`.
-
-Changes can finally get merged only if reaching to maximum votes.
+- Approved: it can be merged.
+- Fix before merge: small issues, easy to fix.
+- Do not merge: a problem that a quick fix does not solve.
 
 If you (either human or AI) are making changes to the mainline device
 repositories, you should check your changes against the following standards.
@@ -21,9 +22,9 @@ repositories, you should check your changes against the following standards.
 - Gets uncomfortable when seeing noticeable style differentation
 - Gets annoyed and less motivated when seeing a big block of code or text
 
-## Cheatsheet of Code-Review vote assignment
+## Cheatsheet of review severity
 
-### Cases for Code-Review -1
+### Cases to fix before merge
 
 - Bad code style and it is relatively easy to fix
 - Commit message is not able to get overall picture of the changes
@@ -36,7 +37,7 @@ repositories, you should check your changes against the following standards.
 - Not maintaining code maintainability and readability
 - Unnecessary/Unrelated changes (such as adding a empty space or newline at unrelated position)
 
-### Cases for Code-Review -2
+### Cases that stop the merge
 
 - Bad code style and it is complicated to fix
 - Being insulting and/or unwelcome in any form
@@ -53,6 +54,6 @@ repositories, you should check your changes against the following standards.
 - Not following overall project structure or guidelines
 - Single commit containing multiple independent changes
 - Specific to AI-involved contributions: Missing proper `Assisted-by: ` trailer
-- The change should be squashed into an earlier git commit which is still open for review
+- The change should be squashed into an earlier commit of the same pull request
 - Using code from other entities without either proper authorship or source description
 - Very inappropriate changes (such as dirty workarounds)

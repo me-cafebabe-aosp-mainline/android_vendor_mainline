@@ -25,8 +25,7 @@ of the repo you work in, then the docs it points to.
 `device/mainline/generic` is a separate tree on top of `common`, for
 any device whose kernel can boot and whose hardware works through
 drivers (`generic_init` finds the partitions, `hardware_detect` the
-hardware). Each `-ext` repo is an optional counterpart that the
-non-ext repo includes when present.
+hardware).
 
 ## Core repositories
 
@@ -48,18 +47,18 @@ non-ext repo includes when present.
 
 More `<vendor>-common` trees may be added; follow the same pattern.
 
-## External (`-ext`) repositories
+## Extension points (`-ext`)
 
-| Path | Counterpart |
-|------|-------------|
+`device/mainline/common` and `device/mainline/qcom-common` include a
+matching `-ext` tree when one exists, so you can add your own extras.
+No `-ext` repository is provided in the organization, and the common
+trees never depend on one. See
+`device/mainline/common/docs/EXTENSIONS.md`.
+
+| Your tree | Extends |
+|-----------|---------|
 | `device/mainline/common-ext` | `device/mainline/common` |
 | `device/mainline/qcom-common-ext` | `device/mainline/qcom-common` |
-| `hardware/mainline/common-ext` | `hardware/mainline/common` (its `docs/` is a symlink to the common docs) |
-| `hardware/mainline/qcom-ext` | `hardware/mainline/qcom` |
-| `vendor/mainline-ext` | `vendor/mainline` |
-
-Maintained under their own rules. The non-ext repos must work without
-them and never depend on them.
 
 ## Device trees
 
@@ -93,7 +92,7 @@ them and never depend on them.
 | A HAL | `hardware/mainline/common`, selected in `device/mainline/common/optional/` |
 | Needs `//vendor:__subpackages__` | `vendor/mainline` |
 | Kernel config option | `kernel/mainline/configs` |
-| Private rules | The `-ext` repo |
+| Only you need it | Your own `-ext` tree |
 
 The common repos stay SoC vendor neutral.
 
@@ -101,9 +100,10 @@ The common repos stay SoC vendor neutral.
 
 | Topic | Fact |
 |-------|------|
+| Hosting | All mainline repositories are in the GitHub organization `me-cafebabe-aosp-mainline` (manifest remote `Mainline`). Dependencies come from their own upstreams |
 | Manifests | A `local_manifests` repo with `mainline/*.xml`, groups start with `mainline` |
 | Branch | `lineage-24.0` is current; older Android versions have their own branches |
-| Review | LineageOS Gerrit, see `docs/review.md` |
+| Review | Pull requests on GitHub, see `docs/review.md` |
 | Standards | `hardware/mainline/common/docs/` |
 
 ## Where the docs live

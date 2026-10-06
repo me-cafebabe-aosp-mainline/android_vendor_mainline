@@ -183,6 +183,10 @@ void __attribute__((noreturn)) InitFatalReboot(int signal_number) {
         LOG(ERROR) << unwinder.FormatFrame(frame);
     }
 #endif
+    if (init_fatal_pause) {
+        LOG(ERROR) << "Call pause()";
+        pause();
+    }
     if (init_fatal_panic) {
         LOG(ERROR) << __FUNCTION__ << ": Trigger crash";
         android::base::WriteStringToFile("c", PROC_SYSRQ);
@@ -205,11 +209,6 @@ void InstallRebootSignalHandlers() {
         // want them to trigger reboot, so we directly call _exit() for children processes here.
         if (getpid() != 1) {
             _exit(signal);
-        }
-
-        if (init_fatal_pause) {
-            LOG(ERROR) << "Call pause()";
-            pause();
         }
 
         // Calling DoReboot() or LOG(FATAL) is not a good option as this is a signal handler.

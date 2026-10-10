@@ -36,6 +36,7 @@ hardware).
 | `vendor/mainline` | Components needing `//vendor:__subpackages__` visibility (`generic_init`, `fbkeyboard`), hwdb | `docs/` (this map, review), `services/generic_init/docs/` |
 | `kernel/mainline/configs` | Kernel config fragments and defconfigs | `fragments/*/README` |
 | `device/mainline/generic` | One image for many machines, runtime hardware detection | `docs/` |
+| `packages/apps/MainlineGenericSystemInstaller` | Installer of the generic tree (app, daemon, scripts) and its disk image | `README.md`, `AGENTS.md` |
 
 ## SoC vendor repositories
 
@@ -118,6 +119,7 @@ The common repos stay SoC vendor neutral.
 | Review a change | `vendor/mainline/docs/review.md`, `hardware/mainline/common/docs/REVIEW.md` |
 | Generic tree | `device/mainline/generic/docs/` |
 | The `generic_init` init program | `vendor/mainline/services/generic_init/docs/README.md` |
+| The installer of the generic tree | `packages/apps/MainlineGenericSystemInstaller/README.md` |
 
 ## Rules for every session
 

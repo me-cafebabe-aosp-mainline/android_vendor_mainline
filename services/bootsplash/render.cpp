@@ -315,8 +315,9 @@ void Render(Image* canvas, const Image* logo, int logo_x, int logo_y, bool bgrt_
     FillRect(canvas, bar_x, bar_y, bar_width, bar_height, background_color);
     FillRect(canvas, bar_x, bar_y, bar_width * std::clamp(percent, 0, 100) / 100, bar_height,
              foreground_color);
-    DrawText(canvas, face, progress_text, static_cast<int>(bar_y - dp(12)), 0xffeeeeeeu);
-    DrawText(canvas, face, std::to_string(std::clamp(percent, 0, 100)) + "%",
+    std::string status = std::to_string(std::clamp(percent, 0, 100)) + "%";
+    if (!progress_text.empty()) status = progress_text + " - " + status;
+    DrawText(canvas, face, status,
              static_cast<int>(std::min<int64_t>(INT32_MAX, bar_y + dp(42))), 0xffeeeeeeu);
     if (face) FT_Done_Face(face);
     if (library) FT_Done_FreeType(library);

@@ -28,6 +28,7 @@ Work directories, all under `/mnt/vendor/generic_init/`:
 | `android` | Mount of the device that holds the Android directory |
 | `firmware` | Mount of the device that holds the firmware directory |
 | `img` | RAM copies of images (`img_ram`, `imgs_ram`) |
+| `overlay/<part>` | Mounts of overlay partitions and images |
 
 ## Parameters
 
@@ -38,6 +39,7 @@ bootconfig. Unset means the default.
 |-----------|---------|--------|
 | `androidboot.mount_system` | `std_parts` | `std_parts`, `blk_devices`, `imgs`, `imgs_ram` |
 | `androidboot.mount_userdata` | `std_parts` | `std_parts`, `imgs`, `bind_mount_dir`, `tmpfs` |
+| `androidboot.mount_overlay` | `disable` | `disable`, `std_parts`, `imgs`, `imgs_ram`, `dirs` |
 | `androidboot.mount_firmware` | `all_possible_dirs` | `all_possible_dirs` (or `true`), `disable` (or `false`), `only_android_dir`, `img`, `img_ram` |
 | `androidboot.android_dir` | none | Directory name to look for first |
 | `androidboot.addon_fstab_suffix` | none | Comma separated suffixes |
@@ -51,7 +53,8 @@ What each parameter makes the handler wait for:
 | `mount_system=std_parts` or `blk_devices` | A block device for every Android system partition (see below) |
 | `mount_userdata=std_parts` | A block device for `userdata` and `metadata` (and `cache`, only if the system partition has a `/cache` directory) |
 | `mount_firmware=all_possible_dirs` or `only_android_dir` | A block device with a firmware directory |
-| Any image mode, `bind_mount_dir` | A block device with the Android directory |
+| Any image mode, `bind_mount_dir`, `mount_overlay=dirs` | A block device with the Android directory |
+| `mount_overlay=std_parts` | Nothing more, but 5 more seconds unless every system partition found has an overlay partition. Overlay partitions are optional, so whether more will appear is unknown |
 | `imgs`, `tmpfs`, `disable` | Nothing for that part |
 
 ## Probing a block device
@@ -90,6 +93,7 @@ Image names (without `.img`):
 | `initrd`, `ramdisk` | Initrd (recognized, not mounted) |
 | `system`, `system_ext`, `product`, `vendor`, `odm`, `*_dlkm` | System |
 | `cache`, `userdata`, `metadata` | Userdata |
+| `<system partition>_overlay`, for example `vendor_overlay` | Overlay |
 
 ### Which device wins
 
@@ -97,10 +101,12 @@ Image names (without `.img`):
 |------|-------------|---------------|
 | System partitions | The uevent `PARTNAME` matches the Android partition name | `build.prop` inside tells which partition it is |
 | Userdata partitions | `PARTNAME` is `cache`, `userdata` or `metadata` | n/a |
+| Overlay partitions (`mount_overlay=std_parts`) | `PARTNAME` is `<system partition>_overlay` | The same |
 | Android directory, firmware directory | The last device that has it | The same |
 
 If two devices claim the same slot, the later uevent replaces the
-earlier one.
+earlier one. A device with a `PARTNAME` ending in `_overlay` (of a system
+partition) is never used for anything else, even with a `build.prop`.
 
 ## Generating the fstab
 
@@ -116,10 +122,58 @@ and then calls `DynamicMountHelpers::MountPartitions()`.
 | 5 | `bind_mount_dir` | Bind mount of `userdata`, `cache`, `metadata` directories from the Android directory |
 | 6 | `tmpfs` | tmpfs for `/cache`, `/data`, `/metadata` |
 | 7 | Firmware directory | Bind mount on `/mnt/vendor/firmware`, `nofail` |
-| 8 | Addon fstabs | Appended last |
+| 8 | Overlays | See [Overlays](#overlays) |
+| 9 | Addon fstabs | Appended last |
 
 In recovery mode only the firmware parts apply (4 and 7), and images
 other than firmware are ignored.
+
+### Overlays
+
+`androidboot.mount_overlay` puts a read-only overlay above system
+partitions. Every overlay is optional: a partition without one is mounted
+as before, and an overlay that can not be used is logged and ignored.
+
+| Value | Overlay of system partition `<part>` |
+|-------|--------------------------------------|
+| `disable` | None |
+| `std_parts` | The block device with `PARTNAME` `<part>_overlay` |
+| `imgs` | `<android dir>/<part>_overlay.img`, on a read-only loop device |
+| `imgs_ram` | The same, copied to RAM first |
+| `dirs` | The directory `<android dir>/<part>_overlay` |
+
+It does not depend on `mount_system`: overlay images or directories work
+with system partitions too.
+
+- The root of an overlay is laid over the mount point of the partition:
+  `system_overlay/bin/foo` replaces `/system/bin/foo`. For `system`, the
+  `/system` directory, not the root (system-as-root): `overlay_remounter`
+  mounts the overlays again in second stage init, which can not replace
+  the root of a running process.
+- Overlay partitions and images are mounted read-only on
+  `.../overlay/<part>` while the fstab is generated, with the filesystems
+  of system partitions (`ext4`, `erofs`, `squashfs`).
+- An overlay entry (`lowerdir=<overlay>:/<part>`, read-only, `nofail`) is
+  added before the addon fstab entries, so that addon overlays of the
+  same mount point go on top of it. Like them, it is mounted after
+  `SwitchRoot()`.
+- With `dirs` the Android directory stays mounted.
+
+Limits:
+
+- overlayfs stacks at most two levels. An overlay with an addon overlay
+  of the same mount point on top of it leaves no level for
+  `adb remount`.
+- `dirs` does not work on `vfat`: overlayfs refuses lower directories on
+  filesystems with their own name hashing and comparison (also `ntfs3`
+  with `nocase`). Use images there.
+- Removing files of the partition (whiteouts, opaque directories) needs
+  a filesystem with extended attributes, which `dirs` does not have on
+  `ntfs`.
+- The directories of an overlay give their mode, owner and SELinux label
+  to the directories they are laid over, its root to the root of the
+  partition: they must be like those of the partition (`0755`, `root`).
+- Files need correct SELinux labels to be usable when enforcing.
 
 Entries generated here are marked `first_stage_mount`. For several
 entries with the same mount point, the first one that mounts wins.
@@ -128,12 +182,14 @@ entries with the same mount point, the first one that mounts wins.
 
 `img_ram` and `imgs_ram` copy the image into `.../img` (tmpfs) first and
 loop-mount the copy. The boot media can then be removed. Userdata images
-are never copied.
+are never copied. `mount_overlay=imgs_ram` does the same for overlay
+images.
 
 ### Releasing the boot media
 
 After the fstab is generated, the Android directory mount is
-unmounted if nothing uses it. Live boot users can remove the media.
+unmounted if nothing uses it. Live boot users can remove the media. Not
+with `mount_overlay=dirs`, whose directories are only used later.
 
 ## Mounting
 

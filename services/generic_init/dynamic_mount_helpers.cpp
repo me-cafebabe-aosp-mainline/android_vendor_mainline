@@ -186,6 +186,13 @@ bool MountPartition(Fstab& fstab_, const Fstab::iterator& begin, bool erase_same
 bool MountPartitions(Fstab& fstab_) {
     if (!TrySwitchSystemAsRoot(fstab_)) return false;
 
+    // The overlay of /system first: it would hide the mounts below /system made before it.
+    for (const auto& entry : fstab_) {
+        if (entry.fs_type == "overlay" && entry.mount_point == "/system") {
+            mount_overlayfs_fstab_entry(entry);
+        }
+    }
+
     for (auto current = fstab_.begin(); current != fstab_.end();) {
         // We've already mounted /system above.
         if (current->mount_point == "/system") {
@@ -224,7 +231,7 @@ bool MountPartitions(Fstab& fstab_) {
     }
 
     for (const auto& entry : fstab_) {
-        if (entry.fs_type == "overlay") {
+        if (entry.fs_type == "overlay" && entry.mount_point != "/system") {
             CreateOverlayfsUpperdirAndWorkdirIfNotPresent(entry);
             mount_overlayfs_fstab_entry(entry);
         }

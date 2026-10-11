@@ -10,6 +10,7 @@
 #include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/macros.h>
+#include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 #include <android-base/unique_fd.h>
 #include <fs_mgr.h>
@@ -44,11 +45,13 @@ namespace DynamicMountHandler {
 namespace fs = std::filesystem;
 using namespace ::android::fs_mgr;
 using android::base::EndsWithIgnoreCase;
+using android::base::EqualsIgnoreCase;
 using android::base::Join;
 using android::base::ReadFileToString;
 using android::base::Split;
 using android::base::StartsWith;
 using android::base::StartsWithIgnoreCase;
+using android::base::StringPrintf;
 using android::base::unique_fd;
 using android::dm::LoopControl;
 using android::fs_mgr::ParseFstabFromString;
@@ -60,6 +63,10 @@ using std::chrono_literals::operator""s;
 namespace {
 
 std::string config_android_dir;
+// androidboot.android_dir_dev: the only device for the android dir, as UUID, PARTUUID or PARTLABEL
+// and its value
+std::string config_android_dir_dev_key;
+std::string config_android_dir_dev_value;
 
 enum class ImageType {
     UNKNOWN = 0,
@@ -84,6 +91,7 @@ struct BlockDeviceInfo {
     bool is_partition;
     bool rw;
     std::string fs_type;
+    std::string fs_uuid;
     std::string mountopts;
 
     std::string android_system_partition;
@@ -157,6 +165,7 @@ std::map<std::string, std::shared_ptr<BlockDeviceInfo>> android_userdata_part_to
 
 constexpr char kAddonFstabSuffixParam[] = "addon_fstab_suffix";
 constexpr char kAndroidDirParam[] = "android_dir";
+constexpr char kAndroidDirDevParam[] = "android_dir_dev";
 constexpr char kMountFirmwareParam[] = "mount_firmware";
 constexpr char kMountOverlayParam[] = "mount_overlay";
 constexpr char kMountSystemParam[] = "mount_system";
@@ -307,6 +316,18 @@ void ParseConfig(void) {
     }
     fs_mgr_get_boot_config(kAndroidDirParam, &config_android_dir);
 
+    if (fs_mgr_get_boot_config(kAndroidDirDevParam, &tmp)) {
+        auto equal_sign = tmp.find('=');
+        std::string key = equal_sign == std::string::npos ? "" : tmp.substr(0, equal_sign);
+        if ((key == "UUID" || key == "PARTUUID" || key == "PARTLABEL") &&
+            equal_sign + 1 < tmp.size()) {
+            config_android_dir_dev_key = key;
+            config_android_dir_dev_value = tmp.substr(equal_sign + 1);
+        } else {
+            LOG(ERROR) << "Parameter " << kAndroidDirDevParam << " value is invalid";
+        }
+    }
+
     ret = fs_mgr_get_boot_config(kMountFirmwareParam, &tmp);
     if (ret) {
         if (kStringToMountFirmwareParamMap.contains(tmp)) {
@@ -418,6 +439,46 @@ std::string TryMountAndReturnFsType(const std::string& devpath, unsigned long mo
         return "";
     }
     return "";
+}
+
+// The filesystem UUID of a device as blkid and GRUB show it, or "": EXT4, F2FS, EROFS (the UUID),
+// FAT (the volume ID, XXXX-XXXX), NTFS (the serial number, 16 hex digits)
+std::string ReadFsUuid(const std::string& devpath, const std::string& fs_type) {
+    unique_fd fd(TEMP_FAILURE_RETRY(open(devpath.c_str(), O_RDONLY | O_CLOEXEC)));
+    if (fd.get() == -1) return "";
+    auto read_at = [&fd](off_t offset, void* buf, size_t len) {
+        return TEMP_FAILURE_RETRY(pread(fd.get(), buf, len, offset)) == static_cast<ssize_t>(len);
+    };
+    auto uuid16 = [](const uint8_t* u) {
+        return StringPrintf("%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+                            u[0], u[1], u[2], u[3], u[4], u[5], u[6], u[7], u[8], u[9], u[10],
+                            u[11], u[12], u[13], u[14], u[15]);
+    };
+    uint8_t buf[16];
+    if (fs_type == "ext4" && read_at(1024 + 0x68, buf, 16)) return uuid16(buf);
+    if (fs_type == "f2fs" && read_at(1024 + 0x6c, buf, 16)) return uuid16(buf);
+    if (fs_type == "erofs" && read_at(1024 + 0x30, buf, 16)) return uuid16(buf);
+    if (fs_type == "vfat") {
+        // FAT32 has a sector count of 0 in the FAT12/16 field at 0x16
+        uint8_t fat_sectors[2];
+        if (!read_at(0x16, fat_sectors, 2)) return "";
+        if (!read_at(fat_sectors[0] || fat_sectors[1] ? 0x27 : 0x43, buf, 4)) return "";
+        return StringPrintf("%02X%02X-%02X%02X", buf[3], buf[2], buf[1], buf[0]);
+    }
+    if (fs_type == "ntfs" && read_at(0x48, buf, 8)) {
+        return StringPrintf("%02X%02X%02X%02X%02X%02X%02X%02X", buf[7], buf[6], buf[5], buf[4],
+                            buf[3], buf[2], buf[1], buf[0]);
+    }
+    return "";
+}
+
+// Whether the device may hold the android dir: the one of androidboot.android_dir_dev, if set
+bool IsAndroidDirDev(const BlockDeviceInfo& info) {
+    const std::string& value = config_android_dir_dev_value;
+    if (config_android_dir_dev_key == "UUID") return EqualsIgnoreCase(info.fs_uuid, value);
+    if (config_android_dir_dev_key == "PARTUUID") return EqualsIgnoreCase(info.partuuid, value);
+    if (config_android_dir_dev_key == "PARTLABEL") return info.partname == value;
+    return true;
 }
 
 ImageType GetImageTypeFromFilename(const std::string& filename) {
@@ -554,6 +615,10 @@ void ParseBlockDevice(BlockDeviceInfo* info) {
     // Mount as RO, and fill fs_type
     info->fs_type = TryMountAndReturnFsType(devpath, mountflags);
     if (info->fs_type.empty()) return;
+    info->fs_uuid = ReadFsUuid(devpath, info->fs_type);
+    if (!info->fs_uuid.empty()) {
+        LOG(INFO) << "Block device " << devpath << " has filesystem UUID " << info->fs_uuid;
+    }
 
     // Check the contents
     if (TryAccessFile(kTryMountTarget + "/system/build.prop")) {
@@ -661,7 +726,11 @@ void UpdateMountInfo(std::shared_ptr<BlockDeviceInfo> bdinfo) {
         return;
     }
 
-    if (need_android_dir && !bdinfo->have_android_dir.empty()) {
+    if (need_android_dir && !bdinfo->have_android_dir.empty() && !IsAndroidDirDev(*bdinfo)) {
+        LOG(INFO) << "Ignoring android dir " << bdinfo->have_android_dir << " of "
+                  << bdinfo->devname << ", not " << config_android_dir_dev_key << "="
+                  << config_android_dir_dev_value;
+    } else if (need_android_dir && !bdinfo->have_android_dir.empty()) {
         LOG(INFO) << "Set block device with android dir to " << bdinfo->devname;
         block_device_for_android_dir = bdinfo;
     }

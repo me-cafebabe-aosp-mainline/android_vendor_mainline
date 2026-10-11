@@ -42,6 +42,7 @@ bootconfig. Unset means the default.
 | `androidboot.mount_overlay` | `disable` | `disable`, `std_parts`, `imgs`, `imgs_ram`, `dirs` |
 | `androidboot.mount_firmware` | `all_possible_dirs` | `all_possible_dirs` (or `true`), `disable` (or `false`), `only_android_dir`, `img`, `img_ram` |
 | `androidboot.android_dir` | none | Name of the Android directory; unset: `android` or `boot/android` |
+| `androidboot.android_dir_dev` | none | The only device for the Android directory: `UUID=` (filesystem), `PARTUUID=` or `PARTLABEL=` (partition) |
 | `androidboot.addon_fstab_suffix` | none | Comma separated suffixes |
 
 An invalid value is logged and the default stays.
@@ -67,9 +68,12 @@ For every `add` uevent of a block device, except names starting with
 2. Otherwise mount it read-only on `try`, testing in order: `ext4`, `f2fs`,
    `erofs`, `squashfs`, `vfat`, `ntfs`, `iso9660`, `udf`. Only `EINVAL` and
    `ENODEV` mean "try the next one".
-3. Check what is inside (below).
-4. Try a read-write remount, to know if it is writable.
-5. Unmount.
+3. Read the filesystem UUID, as blkid shows it: the UUID of `ext4`,
+   `f2fs` and `erofs`, the volume ID of `vfat` (`XXXX-XXXX`), the serial
+   number of `ntfs` (16 hex digits). For `androidboot.android_dir_dev=UUID=`.
+4. Check what is inside (below).
+5. Try a read-write remount, to know if it is writable.
+6. Unmount.
 
 Everything learned is stored per device and used by `UpdateMountInfo()`.
 
@@ -102,7 +106,8 @@ Image names (without `.img`):
 | System partitions | The uevent `PARTNAME` matches the Android partition name | `build.prop` inside tells which partition it is |
 | Userdata partitions | `PARTNAME` is `cache`, `userdata` or `metadata` | n/a |
 | Overlay partitions (`mount_overlay=std_parts`) | `PARTNAME` is `<system partition>_overlay` | The same |
-| Android directory, firmware directory | The last device that has it | The same |
+| Android directory | The last device that has it. With `androidboot.android_dir_dev`, only that device | The same |
+| Firmware directory | The last device that has it | The same |
 
 If two devices claim the same slot, the later uevent replaces the
 earlier one. A device with a `PARTNAME` ending in `_overlay` (of a system

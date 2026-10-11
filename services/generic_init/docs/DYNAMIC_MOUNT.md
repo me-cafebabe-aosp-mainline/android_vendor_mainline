@@ -112,7 +112,7 @@ and then calls `DynamicMountHelpers::MountPartitions()`.
 | 1 | Android directory device (if needed) | Mounted on `.../android` first |
 | 2 | System partitions (`std_parts`, `blk_devices`) | One entry per partition per filesystem in `ext4`, `erofs`, `squashfs`. Writable `ext4` also gets a read-only entry as fallback |
 | 3 | Userdata partitions (`std_parts`) | One entry per filesystem in `ext4`, `f2fs`. Only `/data` is required, the rest are `nofail` |
-| 4 | Images | Each image gets a loop device (direct IO, read-only when the device is). System images: as in 2. Firmware image: `/mnt/vendor/firmware`, `nofail` |
+| 4 | Images | Each image gets a loop device (direct IO with 4096-byte sectors, read-only when the device is). System images: as in 2. Userdata images: as in 3. Firmware image: `/mnt/vendor/firmware`, `nofail` |
 | 5 | `bind_mount_dir` | Bind mount of `userdata`, `cache`, `metadata` directories from the Android directory |
 | 6 | `tmpfs` | tmpfs for `/cache`, `/data`, `/metadata` |
 | 7 | Firmware directory | Bind mount on `/mnt/vendor/firmware`, `nofail` |

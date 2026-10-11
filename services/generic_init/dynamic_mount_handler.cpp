@@ -877,6 +877,17 @@ void OnPostBlockDevices(bool is_recovery_mode) {
 
             entry.mount_point = part == "userdata" ? "/data" : "/" + part;
 
+            if (std::find(android_userdata_partitions.begin(), android_userdata_partitions.end(),
+                          part) != android_userdata_partitions.end()) {
+                // Like userdata partitions: writable only, only /data must be mounted
+                entry.fs_mgr_flags.no_fail = entry.mount_point != "/data";
+                for (const auto& fs_type : fs_types_for_userdata_partitions) {
+                    entry.fs_type = fs_type;
+                    fstab.push_back(entry);
+                }
+                continue;
+            }
+
             for (const auto& fs_type : fs_types_for_system_partitions) {
                 entry.fs_type = fs_type;
                 fstab.push_back(entry);

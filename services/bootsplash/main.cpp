@@ -9,6 +9,7 @@
 #include <android-base/parseint.h>
 #include <android-base/properties.h>
 
+#include <algorithm>
 #include <chrono>
 #include <fstream>
 #include <memory>
@@ -29,6 +30,38 @@ int ReadOffset(const char* path) {
     int result = -1;
     if (!(input >> result) || result < 0) return -1;
     return result;
+}
+
+// The BGRT offsets are relative to the mode the firmware drew in, which the
+// kernel may have since replaced with another one. Firmware centers the logo,
+// so that mode is 2 * offset + logo size. Only trust it when it yields a
+// common aspect ratio, which a non-centered logo will not; then keep the
+// logo's center at the same fraction of the current display.
+bool LooksLikeDisplayMode(int64_t width, int64_t height) {
+    if (width < 320 || height < 200 || width > 16384 || height > 16384) return false;
+    constexpr int kRatios[][2] = {{4, 3}, {5, 4}, {3, 2}, {16, 10}, {16, 9}, {21, 9}};
+    for (const auto& ratio : kRatios) {
+        const int64_t lhs = width * ratio[1];
+        const int64_t rhs = height * ratio[0];
+        if ((lhs > rhs ? lhs - rhs : rhs - lhs) * 100 <= rhs) return true;
+    }
+    return false;
+}
+
+void MapBgrtOffsets(const bootsplash::Image& logo, int screen_width, int screen_height, int* x,
+                    int* y) {
+    if (*x <= 0 || *y <= 0) return;
+    const int64_t old_width = 2 * int64_t(*x) + logo.width;
+    const int64_t old_height = 2 * int64_t(*y) + logo.height;
+    if (!LooksLikeDisplayMode(old_width, old_height)) return;
+    if (old_width == screen_width && old_height == screen_height) return;
+    LOG(INFO) << "Mapping BGRT logo from " << old_width << "x" << old_height << " to "
+              << screen_width << "x" << screen_height;
+    // Center fraction cx = (x + w / 2) / old_width, so x' = cx * new_width - w / 2.
+    *x = static_cast<int>(std::max<int64_t>(
+        0, (2 * int64_t(*x) + logo.width) * screen_width / (2 * old_width) - logo.width / 2));
+    *y = static_cast<int>(std::max<int64_t>(
+        0, (2 * int64_t(*y) + logo.height) * screen_height / (2 * old_height) - logo.height / 2));
 }
 
 struct Progress {
@@ -97,10 +130,13 @@ int main(int, char* argv[]) {
     int logo_x = -1;
     int logo_y = -1;
     bool bgrt_logo = false;
+    int bgrt_status = -1;
     if (bootsplash::LoadBmp(kBgrtImage, &logo)) {
         bgrt_logo = true;
         logo_x = ReadOffset("/sys/firmware/acpi/bgrt/xoffset");
         logo_y = ReadOffset("/sys/firmware/acpi/bgrt/yoffset");
+        // Bits 1-2 of status are the orientation; the logo is not rotated here.
+        bgrt_status = ReadOffset("/sys/firmware/acpi/bgrt/status");
         LOG(INFO) << "Using BGRT boot image";
     } else if (bootsplash::LoadPng(kProductPng, &logo)) {
         LOG(INFO) << "Using product PNG boot image";
@@ -119,6 +155,9 @@ int main(int, char* argv[]) {
         return 0;
     }
     canvas.pixels.resize(static_cast<size_t>(canvas.width) * canvas.height);
+    if (bgrt_logo && bgrt_status >= 0 && ((bgrt_status >> 1) & 3) == 0) {
+        MapBgrtOffsets(logo, canvas.width, canvas.height, &logo_x, &logo_y);
+    }
     const int density = android::base::GetIntProperty<int>("ro.sf.lcd_density", 160, 1, 1000);
     auto progress = ReadProgress();
     while (true) {

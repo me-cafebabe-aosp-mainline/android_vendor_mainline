@@ -41,7 +41,13 @@ The logo source priority is the validated UEFI BGRT BMP at
 `/product/etc/bootsplash.bmp`, then `sys.bootsplash.logo_text`. Transparent PNG
 pixels are blended over the canvas background. A late-mounted product image
 is retried while the service runs. BGRT x/y offsets
-are used if the logo fits at that location; otherwise it is centered. Product
+are used if the logo fits at that location; otherwise it is centered. The
+offsets belong to the firmware's display mode, which the kernel may have
+replaced: assuming the firmware centered the logo, that mode is
+`2 * offset + logo size`. When it has a common aspect ratio (4:3, 5:4, 3:2,
+16:10, 16:9, 21:9) and differs from the current one, the logo keeps its center
+at the same fraction of the display without being scaled. Otherwise, or when the
+BGRT orientation is nonzero, the offsets are used as given. Product
 images and fallback logo text are centered around one-third of the screen height,
 in the upper half; images are clamped to stay visible. Images
 larger than the output are scaled to fit. The product supplies its optional PNG

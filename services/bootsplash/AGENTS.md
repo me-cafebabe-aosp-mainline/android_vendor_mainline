@@ -2,7 +2,8 @@
 
 Follow `hardware/mainline/common/AGENTS.md` and its relevant `docs/` guidance,
 except this is a standalone system_ext utility and does not live in an APEX.
-The user builds and tests it; do not compile, run tests, or deploy locally.
+Builds, tests and deploying follow `hardware/mainline/common/docs/WORKFLOW.md`: ask the user
+first.
 
 - Do not write after the graphics HAL owns the display or change a HAL to make
   the splash work. Init stops this service at early-boot.

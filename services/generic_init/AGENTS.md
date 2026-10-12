@@ -24,7 +24,8 @@ path. It is a copy, so every difference is a future merge conflict.
 
 ## Hard rules
 
-- Do not build, flash or run tests; the human does.
+- No Android build, flashing or test without asking the human first
+  (`hardware/mainline/common/docs/WORKFLOW.md`).
 - Do not search from the AOSP tree root. AOSP init is at
   `system/core/init`; look only there.
 - Keep changes against AOSP small and local. Prefer a guard or a

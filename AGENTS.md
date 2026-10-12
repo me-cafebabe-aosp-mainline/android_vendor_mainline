@@ -17,7 +17,8 @@ relate and where each kind of change goes.
 
 ## Hard rules
 
-- Do not build, flash or run tests; the human does.
+- No Android build, flashing or test without asking the human first
+  (`hardware/mainline/common/docs/WORKFLOW.md`).
 - Do not search from the AOSP tree root.
 - Only add components here that need `//vendor:__subpackages__`
   visibility; otherwise use `device/mainline/common`.

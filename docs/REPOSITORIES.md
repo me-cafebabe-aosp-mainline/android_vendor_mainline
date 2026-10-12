@@ -123,7 +123,8 @@ The common repos stay SoC vendor neutral.
 
 ## Rules for every session
 
-- Do not build, flash or run tests; the human does.
+- No Android build, flashing or test without asking the human first
+  (`hardware/mainline/common/docs/WORKFLOW.md`).
 - Do not search from the AOSP tree root.
 - Read the repo's `AGENTS.md` before touching it.
 - Keep device specifics in device trees and vendor specifics in vendor trees.

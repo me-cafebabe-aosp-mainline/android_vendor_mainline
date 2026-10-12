@@ -3,7 +3,8 @@
 **TL;DR:** set the soong config `generic_init enabled`, add the
 package for your variant, point `rdinit=` at it.
 
-The human builds and tests. This page lists what to wire up.
+This page lists what to wire up. Builds and tests follow
+`hardware/mainline/common/docs/WORKFLOW.md`.
 
 ## Modules
 

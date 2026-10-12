@@ -24,7 +24,7 @@ that diff here, and keep the local changes listed in
 | 4 | For files this fork changed, merge by hand, using [DIFFERENCES_FROM_AOSP.md](DIFFERENCES_FROM_AOSP.md) as the list |
 | 5 | Update `Android.bp`: new sources go to `init_common_sources` or `init_device_sources` and to the ramdisk list if first stage needs them |
 | 6 | Update the base tag in this page and in the README |
-| 7 | The human builds and boots (agents must not) |
+| 7 | Build and boot (agents only after asking, `hardware/mainline/common/docs/WORKFLOW.md`) |
 
 ### Where changes are likely to conflict
 

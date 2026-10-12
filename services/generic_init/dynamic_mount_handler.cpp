@@ -277,6 +277,63 @@ Fstab fstab_userdata_on_tmpfs = {{.blk_device = "cache",
                                           .first_stage_mount = true,
                                   }}};
 
+bool Contains(const std::list<std::string>& list, const std::string& value) {
+    return std::find(list.begin(), list.end(), value) != list.end();
+}
+
+// Whether images of the type are mounted from the android dir
+bool MountsImages(ImageType type) {
+    switch (type) {
+        case ImageType::FIRMWARE:
+            return param_mount_firmware == MountFirmwareParam::IMAGE ||
+                   param_mount_firmware == MountFirmwareParam::IMAGE_COPY_TO_RAM;
+        case ImageType::SYSTEM:
+            return param_mount_system == MountSystemParam::IMAGES ||
+                   param_mount_system == MountSystemParam::IMAGES_COPY_TO_RAM;
+        case ImageType::USERDATA:
+            return param_mount_userdata == MountUserdataParam::IMAGES;
+        case ImageType::OVERLAY:
+            return param_mount_overlay == MountOverlayParam::IMAGES ||
+                   param_mount_overlay == MountOverlayParam::IMAGES_COPY_TO_RAM;
+        default:
+            return false;
+    }
+}
+
+bool CopiesImagesToRam(ImageType type) {
+    switch (type) {
+        case ImageType::FIRMWARE:
+            return param_mount_firmware == MountFirmwareParam::IMAGE_COPY_TO_RAM;
+        case ImageType::SYSTEM:
+            return param_mount_system == MountSystemParam::IMAGES_COPY_TO_RAM;
+        case ImageType::OVERLAY:
+            return param_mount_overlay == MountOverlayParam::IMAGES_COPY_TO_RAM;
+        default:
+            return false;
+    }
+}
+
+bool MountsAnyImages() {
+    return MountsImages(ImageType::FIRMWARE) || MountsImages(ImageType::SYSTEM) ||
+           MountsImages(ImageType::USERDATA) || MountsImages(ImageType::OVERLAY);
+}
+
+std::string MountPointOf(const std::string& partition) {
+    return partition == "userdata" ? "/data" : "/" + partition;
+}
+
+template <typename T>
+void ReadModeParam(const char* name, const std::unordered_map<std::string, T>& values, T* out) {
+    std::string value;
+    if (!fs_mgr_get_boot_config(name, &value)) {
+        LOG(INFO) << "Parameter " << name << " is unset";
+    } else if (values.contains(value)) {
+        *out = values.at(value);
+    } else {
+        LOG(ERROR) << "Parameter " << name << " value is invalid";
+    }
+}
+
 // Copy of ReadFstabFromFileCommon() from libfstab/fstab.cpp
 // In order to get rid of calling SkipMountingPartitions()
 bool ReadFstabFromFstabFile(const std::string& path, Fstab* fstab) {
@@ -295,7 +352,6 @@ bool ReadFstabFromFstabFile(const std::string& path, Fstab* fstab) {
 }
 
 void ParseConfig(void) {
-    bool ret;
     std::string tmp;
 
     if (fs_mgr_get_boot_config(kAddonFstabSuffixParam, &tmp)) {
@@ -328,66 +384,16 @@ void ParseConfig(void) {
         }
     }
 
-    ret = fs_mgr_get_boot_config(kMountFirmwareParam, &tmp);
-    if (ret) {
-        if (kStringToMountFirmwareParamMap.contains(tmp)) {
-            param_mount_firmware = kStringToMountFirmwareParamMap.at(tmp);
-        } else {
-            LOG(ERROR) << "Parameter " << kMountFirmwareParam << " value is invalid";
-        }
-    } else {
-        LOG(INFO) << "Parameter " << kMountFirmwareParam << " is unset";
-    }
+    ReadModeParam(kMountFirmwareParam, kStringToMountFirmwareParamMap, &param_mount_firmware);
+    ReadModeParam(kMountOverlayParam, kStringToMountOverlayParamMap, &param_mount_overlay);
+    ReadModeParam(kMountSystemParam, kStringToMountSystemParamMap, &param_mount_system);
+    ReadModeParam(kMountUserdataParam, kStringToMountUserdataParamMap, &param_mount_userdata);
 
-    ret = fs_mgr_get_boot_config(kMountOverlayParam, &tmp);
-    if (ret) {
-        if (kStringToMountOverlayParamMap.contains(tmp)) {
-            param_mount_overlay = kStringToMountOverlayParamMap.at(tmp);
-        } else {
-            LOG(ERROR) << "Parameter " << kMountOverlayParam << " value is invalid";
-        }
-    } else {
-        LOG(INFO) << "Parameter " << kMountOverlayParam << " is unset";
-    }
-
-    ret = fs_mgr_get_boot_config(kMountSystemParam, &tmp);
-    if (ret) {
-        if (kStringToMountSystemParamMap.contains(tmp)) {
-            param_mount_system = kStringToMountSystemParamMap.at(tmp);
-        } else {
-            LOG(ERROR) << "Parameter " << kMountSystemParam << " value is invalid";
-        }
-    } else {
-        LOG(INFO) << "Parameter " << kMountSystemParam << " is unset";
-    }
-
-    ret = fs_mgr_get_boot_config(kMountUserdataParam, &tmp);
-    if (ret) {
-        if (kStringToMountUserdataParamMap.contains(tmp)) {
-            param_mount_userdata = kStringToMountUserdataParamMap.at(tmp);
-        } else {
-            LOG(ERROR) << "Parameter " << kMountUserdataParam << " value is invalid";
-        }
-    } else {
-        LOG(INFO) << "Parameter " << kMountUserdataParam << " is unset";
-    }
-
-    if (param_mount_firmware == MountFirmwareParam::ALL_POSSIBLE_DIRS ||
-        param_mount_firmware == MountFirmwareParam::ONLY_ANDROID_DIR) {
-        need_firmware_dir = true;
-    }
-
-    if (param_mount_firmware == MountFirmwareParam::IMAGE ||
-        param_mount_firmware == MountFirmwareParam::IMAGE_COPY_TO_RAM ||
-        param_mount_system == MountSystemParam::IMAGES ||
-        param_mount_system == MountSystemParam::IMAGES_COPY_TO_RAM ||
-        param_mount_userdata == MountUserdataParam::IMAGES ||
-        param_mount_userdata == MountUserdataParam::BIND_MOUNT_DIR ||
-        param_mount_overlay == MountOverlayParam::IMAGES ||
-        param_mount_overlay == MountOverlayParam::IMAGES_COPY_TO_RAM ||
-        param_mount_overlay == MountOverlayParam::DIRS) {
-        need_android_dir = true;
-    }
+    need_firmware_dir = param_mount_firmware == MountFirmwareParam::ALL_POSSIBLE_DIRS ||
+                        param_mount_firmware == MountFirmwareParam::ONLY_ANDROID_DIR;
+    need_android_dir = MountsAnyImages() ||
+                       param_mount_userdata == MountUserdataParam::BIND_MOUNT_DIR ||
+                       param_mount_overlay == MountOverlayParam::DIRS;
 }
 
 // The system partition that name (of a partition, an image without suffix, or a directory) is
@@ -395,11 +401,7 @@ void ParseConfig(void) {
 std::string GetOverlayTarget(const std::string& name) {
     if (!name.ends_with(kOverlaySuffix)) return "";
     std::string partition = name.substr(0, name.size() - kOverlaySuffix.size());
-    if (std::find(android_system_partitions.begin(), android_system_partitions.end(), partition) ==
-        android_system_partitions.end()) {
-        return "";
-    }
-    return partition;
+    return Contains(android_system_partitions, partition) ? partition : "";
 }
 
 std::string DetermineAndroidPartitionFromBuildProp(const std::string& path) {
@@ -484,25 +486,11 @@ bool IsAndroidDirDev(const BlockDeviceInfo& info) {
 ImageType GetImageTypeFromFilename(const std::string& filename) {
     std::string name = filename.substr(0, filename.find_last_of('.'));
 
-    if (std::find(possible_firmware_image_names.begin(), possible_firmware_image_names.end(),
-                  name) != possible_firmware_image_names.end()) {
-        return ImageType::FIRMWARE;
-    }
-    if (std::find(possible_initrd_image_names.begin(), possible_initrd_image_names.end(), name) !=
-        possible_initrd_image_names.end()) {
-        return ImageType::INITRD;
-    }
-    if (std::find(android_system_partitions.begin(), android_system_partitions.end(), name) !=
-        android_system_partitions.end()) {
-        return ImageType::SYSTEM;
-    }
-    if (std::find(android_userdata_partitions.begin(), android_userdata_partitions.end(), name) !=
-        android_userdata_partitions.end()) {
-        return ImageType::USERDATA;
-    }
-    if (!GetOverlayTarget(name).empty()) {
-        return ImageType::OVERLAY;
-    }
+    if (Contains(possible_firmware_image_names, name)) return ImageType::FIRMWARE;
+    if (Contains(possible_initrd_image_names, name)) return ImageType::INITRD;
+    if (Contains(android_system_partitions, name)) return ImageType::SYSTEM;
+    if (Contains(android_userdata_partitions, name)) return ImageType::USERDATA;
+    if (!GetOverlayTarget(name).empty()) return ImageType::OVERLAY;
     return ImageType::UNKNOWN;
 }
 
@@ -553,7 +541,7 @@ void ParseBlockDevice_CheckDirs(BlockDeviceInfo* info) {
 }
 
 bool ParseApfsBlockDevice(BlockDeviceInfo* info) {
-    bool success;
+    bool success = false;
     int ret, save_errno;
     unsigned int apfs_vol = 0;
     unsigned long mountflags = MS_RDONLY;
@@ -685,6 +673,16 @@ void ParseBlockDevice(BlockDeviceInfo* info) {
     }
 }
 
+void SetSystemPartition(const std::string& partition, std::shared_ptr<BlockDeviceInfo> bdinfo) {
+    LOG(INFO) << "Set block device for system partition " << partition << " to " << bdinfo->devname;
+    android_system_part_to_bdev_map[partition] = bdinfo;
+    for (const auto& subdir : bdinfo->android_system_partition_have_subdirs) {
+        LOG(INFO) << "Set block device for system partition subdir " << subdir << " to "
+                  << bdinfo->devname;
+        android_system_part_to_bdev_map[subdir] = bdinfo;
+    }
+}
+
 void UpdateMountInfo(std::shared_ptr<BlockDeviceInfo> bdinfo) {
     // Overlay partitions are nothing else, even with a build.prop in them
     if (!GetOverlayTarget(bdinfo->partname).empty()) {
@@ -697,29 +695,19 @@ void UpdateMountInfo(std::shared_ptr<BlockDeviceInfo> bdinfo) {
     }
 
     if (param_mount_system == MountSystemParam::STANDARD_PARTITIONS_WITH_PARTNAME &&
-        !bdinfo->partname.empty() &&
-        (std::find(android_system_partitions.begin(), android_system_partitions.end(),
-                   bdinfo->partname) != android_system_partitions.end())) {
-        LOG(INFO) << "Set block device for system partition " << bdinfo->partname << " to "
-                  << bdinfo->devname;
-        android_system_part_to_bdev_map[bdinfo->partname] = bdinfo;
-        goto process_android_system_partition_subdirs;
+        Contains(android_system_partitions, bdinfo->partname)) {
+        SetSystemPartition(bdinfo->partname, bdinfo);
+        return;
     }
 
     if (param_mount_system == MountSystemParam::ANY_BLOCK_DEVICES_AS_PARTITION &&
-        !bdinfo->android_system_partition.empty() &&
-        (std::find(android_system_partitions.begin(), android_system_partitions.end(),
-                   bdinfo->android_system_partition) != android_system_partitions.end())) {
-        LOG(INFO) << "Set block device for system partition " << bdinfo->android_system_partition
-                  << " to " << bdinfo->devname;
-        android_system_part_to_bdev_map[bdinfo->android_system_partition] = bdinfo;
-        goto process_android_system_partition_subdirs;
+        Contains(android_system_partitions, bdinfo->android_system_partition)) {
+        SetSystemPartition(bdinfo->android_system_partition, bdinfo);
+        return;
     }
 
     if (param_mount_userdata == MountUserdataParam::STANDARD_PARTITIONS_WITH_PARTNAME &&
-        !bdinfo->partname.empty() &&
-        (std::find(android_userdata_partitions.begin(), android_userdata_partitions.end(),
-                   bdinfo->partname) != android_userdata_partitions.end())) {
+        Contains(android_userdata_partitions, bdinfo->partname)) {
         LOG(INFO) << "Set block device for userdata partition " << bdinfo->partname << " to "
                   << bdinfo->devname;
         android_userdata_part_to_bdev_map[bdinfo->partname] = bdinfo;
@@ -738,16 +726,6 @@ void UpdateMountInfo(std::shared_ptr<BlockDeviceInfo> bdinfo) {
         LOG(INFO) << "Set block device with firmware dir to " << bdinfo->devname;
         block_device_for_firmware_dir = bdinfo;
     }
-
-    return;
-
-process_android_system_partition_subdirs:
-    for (const auto& subdir : bdinfo->android_system_partition_have_subdirs) {
-        LOG(INFO) << "Set block device for system partition subdir " << subdir << " to "
-                  << bdinfo->devname;
-        android_system_part_to_bdev_map[subdir] = bdinfo;
-    }
-    return;
 }
 
 std::string SetupLoopDevice(const std::string& image, bool rw) {
@@ -798,6 +776,213 @@ std::string MountOverlaySource(const std::string& partition, const std::string& 
     return "";
 }
 
+std::string SetupLoopDeviceOrDie(const std::string& image, bool rw) {
+    std::string loop_device = SetupLoopDevice(image, rw);
+    if (loop_device.empty()) LOG(FATAL) << "Failed to setup loop device for image " << image;
+    return loop_device;
+}
+
+// Lower directory of the overlay of each system partition
+using OverlayLowerdirs = std::map<std::string, std::string>;
+
+// One entry per filesystem: MountPartitions() tries the entries of a mount point in order
+void AddEntries(Fstab* fstab, FstabEntry entry, const std::list<std::string>& fs_types) {
+    for (const auto& fs_type : fs_types) {
+        entry.fs_type = fs_type;
+        fstab->push_back(entry);
+    }
+}
+
+void AddSystemEntries(Fstab* fstab, FstabEntry entry) {
+    for (const auto& fs_type : fs_types_for_system_partitions) {
+        entry.fs_type = fs_type;
+        fstab->push_back(entry);
+        // Fallback for a writable device with an EXT4 that only mounts read-only
+        if (fs_type == "ext4" && !(entry.flags & MS_RDONLY)) {
+            fstab->push_back(entry);
+            fstab->back().flags |= MS_RDONLY;
+        }
+    }
+}
+
+void AddUserdataEntries(Fstab* fstab, FstabEntry entry) {
+    // Only /data is required
+    entry.fs_mgr_flags.no_fail = entry.mount_point != "/data";
+    AddEntries(fstab, entry, fs_types_for_userdata_partitions);
+}
+
+// Returns the path of the android dir
+std::string MountAndroidDir() {
+    const auto& bdinfo = block_device_for_android_dir;
+    if (mount(bdinfo->devpath.c_str(), kAndroidMountTarget.c_str(), bdinfo->fs_type.c_str(),
+              bdinfo->rw ? 0 : MS_RDONLY, bdinfo->mountopts.c_str())) {
+        PLOG(FATAL) << "Unable to mount block device for android dir";
+    }
+    return kAndroidMountTarget + "/" + bdinfo->have_android_dir;
+}
+
+void MountOverlayPartitions(OverlayLowerdirs* lowerdirs) {
+    if (param_mount_overlay != MountOverlayParam::STANDARD_PARTITIONS_WITH_PARTNAME) return;
+    for (const auto& [partition, bdinfo] : android_overlay_part_to_bdev_map) {
+        std::string lowerdir = MountOverlaySource(partition, bdinfo->devpath);
+        if (!lowerdir.empty()) (*lowerdirs)[partition] = lowerdir;
+    }
+}
+
+void AddSystemPartitionEntries(Fstab* fstab) {
+    if (param_mount_system != MountSystemParam::STANDARD_PARTITIONS_WITH_PARTNAME &&
+        param_mount_system != MountSystemParam::ANY_BLOCK_DEVICES_AS_PARTITION) {
+        return;
+    }
+    for (const auto& [partition, bdinfo] : android_system_part_to_bdev_map) {
+        // Subdirs are mounted with the partition holding them
+        if (partition != bdinfo->android_system_partition) continue;
+        FstabEntry entry = {.blk_device = bdinfo->devpath,
+                            .mount_point = "/" + partition,
+                            .fs_mgr_flags = {.first_stage_mount = true}};
+        if (!bdinfo->rw) entry.flags |= MS_RDONLY;
+        AddSystemEntries(fstab, entry);
+    }
+}
+
+void AddUserdataPartitionEntries(Fstab* fstab) {
+    if (param_mount_userdata != MountUserdataParam::STANDARD_PARTITIONS_WITH_PARTNAME) return;
+    for (const auto& [partition, bdinfo] : android_userdata_part_to_bdev_map) {
+        if (partition == "cache" && !need_mount_cache) continue;
+        AddUserdataEntries(fstab, {.blk_device = bdinfo->devpath,
+                                   .mount_point = MountPointOf(partition),
+                                   .fs_mgr_flags = {.first_stage_mount = true}});
+    }
+}
+
+void AddImageEntries(Fstab* fstab, const std::string& android_dir_path, bool is_recovery_mode,
+                     OverlayLowerdirs* lowerdirs) {
+    if (!MountsAnyImages()) return;
+    const auto& bdinfo = block_device_for_android_dir;
+    struct PartitionImage {
+        ImageType type;
+        std::string partition;
+        std::string path;
+    };
+    std::vector<PartitionImage> partition_images;
+    std::string firmware_image;
+
+    for (const auto& [type, name] : bdinfo->android_dir_have_images) {
+        // Recovery mode only mounts the firmware
+        if (!MountsImages(type) || (is_recovery_mode && type != ImageType::FIRMWARE)) continue;
+        std::string partition = name.substr(0, name.find_last_of('.'));
+        std::string path = android_dir_path + "/" + name;
+
+        if (CopiesImagesToRam(type)) {
+            LOG(INFO) << "Copying image " << name << " to RAM";
+            std::string copy = kTmpfsImgDir + "/" + name;
+            std::error_code ec;
+            fs::copy(path, copy, ec);
+            if (ec) LOG(FATAL) << "Failed to copy image " << name << " to RAM";
+            path = copy;
+        }
+
+        if (type == ImageType::FIRMWARE) {
+            firmware_image = path;
+        } else if (type == ImageType::OVERLAY) {
+            std::string loop_device = SetupLoopDevice(path, false);
+            if (loop_device.empty()) {
+                LOG(ERROR) << "Failed to setup loop device for image " << path << ", ignoring it";
+                continue;
+            }
+            std::string target = GetOverlayTarget(partition);
+            std::string lowerdir = MountOverlaySource(target, loop_device);
+            if (!lowerdir.empty()) (*lowerdirs)[target] = lowerdir;
+        } else {
+            partition_images.push_back({type, partition, path});
+        }
+    }
+
+    if (MountsImages(ImageType::FIRMWARE)) {
+        if (firmware_image.empty()) LOG(FATAL) << "Firmware image was not found";
+        FstabEntry entry = {.blk_device = SetupLoopDeviceOrDie(firmware_image, bdinfo->rw),
+                            .mount_point = kFirmwareFstabMountPoint,
+                            .fs_mgr_flags = {.no_fail = true, .first_stage_mount = true}};
+        if (!bdinfo->rw) entry.flags |= MS_RDONLY;
+        AddEntries(fstab, entry, fs_types_for_firmware);
+    }
+
+    for (const auto& image : partition_images) {
+        if (image.partition == "cache" && !need_mount_cache) continue;
+        FstabEntry entry = {.blk_device = SetupLoopDeviceOrDie(image.path, bdinfo->rw),
+                            .mount_point = MountPointOf(image.partition),
+                            .fs_mgr_flags = {.first_stage_mount = true}};
+        if (!bdinfo->rw) entry.flags |= MS_RDONLY;
+        if (image.type == ImageType::USERDATA) {
+            AddUserdataEntries(fstab, entry);
+        } else {
+            AddSystemEntries(fstab, entry);
+        }
+    }
+}
+
+void AddUserdataDirEntries(Fstab* fstab, const std::string& android_dir_path) {
+    if (param_mount_userdata != MountUserdataParam::BIND_MOUNT_DIR) return;
+    for (const auto& subdir : block_device_for_android_dir->android_dir_have_subdirs) {
+        if (!Contains(android_userdata_partitions, subdir)) continue;
+        if (subdir == "cache" && !need_mount_cache) continue;
+        fstab->push_back({.blk_device = android_dir_path + "/" + subdir,
+                          .mount_point = MountPointOf(subdir),
+                          .fs_type = "none",
+                          .flags = MS_BIND,
+                          .fs_mgr_flags = {.first_stage_mount = true}});
+    }
+}
+
+void UseOverlayDirs(const std::string& android_dir_path, OverlayLowerdirs* lowerdirs) {
+    if (param_mount_overlay != MountOverlayParam::DIRS) return;
+    for (const auto& subdir : block_device_for_android_dir->android_dir_have_subdirs) {
+        std::string partition = GetOverlayTarget(subdir);
+        if (partition.empty()) continue;
+        LOG(INFO) << "Using directory " << subdir << " as the overlay of system partition "
+                  << partition;
+        (*lowerdirs)[partition] = android_dir_path + "/" + subdir;
+    }
+}
+
+void AddUserdataTmpfsEntries(Fstab* fstab) {
+    if (param_mount_userdata != MountUserdataParam::TMPFS) return;
+    fstab->insert(fstab->end(), fstab_userdata_on_tmpfs.begin(), fstab_userdata_on_tmpfs.end());
+}
+
+void AddFirmwareDirEntry(Fstab* fstab) {
+    if (!need_firmware_dir) return;
+    const auto& bdinfo = block_device_for_firmware_dir;
+    std::string firmware_dir_path;
+    if (bdinfo == block_device_for_android_dir) {
+        firmware_dir_path = kAndroidMountTarget + "/" + bdinfo->have_firmware_dir;
+    } else {
+        if (mount(bdinfo->devpath.c_str(), kFirmwareMountTarget.c_str(), bdinfo->fs_type.c_str(),
+                  MS_RDONLY, bdinfo->mountopts.c_str())) {
+            PLOG(FATAL) << "Unable to mount block device for firmware dir";
+        }
+        firmware_dir_path = kFirmwareMountTarget + "/" + bdinfo->have_firmware_dir;
+    }
+    fstab->push_back({.blk_device = firmware_dir_path,
+                      .mount_point = kFirmwareFstabMountPoint,
+                      .fs_type = "none",
+                      .flags = MS_BIND,
+                      .fs_mgr_flags = {.no_fail = true, .first_stage_mount = true}});
+}
+
+// Read-only, before the addon fstab entries: those for the same mount points go on top of them.
+// Mounted after SwitchRoot(), the one of /system on the /system directory.
+void AddOverlayEntries(Fstab* fstab, const OverlayLowerdirs& lowerdirs) {
+    for (const auto& [partition, lowerdir] : lowerdirs) {
+        fstab->push_back({.blk_device = partition + kOverlaySuffix,
+                          .mount_point = "/" + partition,
+                          .fs_type = "overlay",
+                          .flags = MS_RDONLY,
+                          .lowerdir = lowerdir + ":/" + partition,
+                          .fs_mgr_flags = {.no_fail = true, .first_stage_mount = true}});
+    }
+}
+
 }  // namespace
 
 void OnPreBlockDevices(void) {
@@ -840,49 +1025,30 @@ void OnBlockDeviceAdd(const android::init::Uevent& uevent, const std::string& de
 
 bool CanQuitUeventd(bool print_log) {
     bool ret = true;
+    // Returns whether to look for more missing devices, to log them all
+    auto missing = [&, function = __FUNCTION__](const std::string& what) {
+        if (print_log) LOG(INFO) << function << ": Missing block device for " << what;
+        ret = false;
+        return print_log;
+    };
+
     if (param_mount_system == MountSystemParam::STANDARD_PARTITIONS_WITH_PARTNAME ||
         param_mount_system == MountSystemParam::ANY_BLOCK_DEVICES_AS_PARTITION) {
         for (const auto& [part, bdev] : android_system_part_to_bdev_map) {
-            if (bdev == nullptr) {
-                if (print_log) {
-                    LOG(INFO) << __FUNCTION__ << ": Missing block device for system partition "
-                              << part;
-                    ret = false;
-                } else {
-                    return false;
-                }
-            }
+            if (bdev == nullptr && !missing("system partition " + part)) return false;
         }
     }
     if (param_mount_userdata == MountUserdataParam::STANDARD_PARTITIONS_WITH_PARTNAME) {
         for (const auto& [part, bdev] : android_userdata_part_to_bdev_map) {
             if (part == "cache" && !need_mount_cache) continue;
-            if (bdev == nullptr) {
-                if (print_log) {
-                    LOG(INFO) << __FUNCTION__ << ": Missing block device for userdata partition "
-                              << part;
-                    ret = false;
-                } else {
-                    return false;
-                }
-            }
+            if (bdev == nullptr && !missing("userdata partition " + part)) return false;
         }
     }
-    if (need_android_dir && block_device_for_android_dir == nullptr) {
-        if (print_log) {
-            LOG(INFO) << __FUNCTION__ << ": Missing block device for android dir";
-            ret = false;
-        } else {
-            return false;
-        }
+    if (need_android_dir && block_device_for_android_dir == nullptr && !missing("android dir")) {
+        return false;
     }
-    if (need_firmware_dir && block_device_for_firmware_dir == nullptr) {
-        if (print_log) {
-            LOG(INFO) << __FUNCTION__ << ": Missing block device for firmware dir";
-            ret = false;
-        } else {
-            return false;
-        }
+    if (need_firmware_dir && block_device_for_firmware_dir == nullptr && !missing("firmware dir")) {
+        return false;
     }
     if (ret && param_mount_overlay == MountOverlayParam::STANDARD_PARTITIONS_WITH_PARTNAME) {
         // Wait a bit for overlay partitions, unless every system partition has one
@@ -906,284 +1072,33 @@ bool CanQuitUeventd(bool print_log) {
 
 void OnPostBlockDevices(bool is_recovery_mode) {
     Fstab fstab;
-    int ret;
-    std::error_code ec;
-    std::string android_dir_path, firmware_dir_path;
-    // Lower directory of the overlay of each system partition
-    std::map<std::string, std::string> overlay_lowerdirs;
-    bool overlay_dirs_used = false;
+    OverlayLowerdirs overlay_lowerdirs;
+    std::string android_dir_path = need_android_dir ? MountAndroidDir() : "";
 
-    if (need_android_dir) {
-        std::shared_ptr<BlockDeviceInfo> bdinfo = block_device_for_android_dir;
-        ret = mount(bdinfo->devpath.c_str(), kAndroidMountTarget.c_str(), bdinfo->fs_type.c_str(),
-                    bdinfo->rw ? 0 : MS_RDONLY, bdinfo->mountopts.c_str());
-        if (ret) {
-            PLOG(FATAL) << "Unable to mount block device for android dir";
-        }
-        android_dir_path = kAndroidMountTarget + "/" + bdinfo->have_android_dir;
+    // Recovery mode only mounts the firmware
+    if (!is_recovery_mode) {
+        MountOverlayPartitions(&overlay_lowerdirs);
+        AddSystemPartitionEntries(&fstab);
+        AddUserdataPartitionEntries(&fstab);
     }
-
-    if (!is_recovery_mode &&
-        param_mount_overlay == MountOverlayParam::STANDARD_PARTITIONS_WITH_PARTNAME) {
-        for (const auto& [partition, bdinfo] : android_overlay_part_to_bdev_map) {
-            std::string lowerdir = MountOverlaySource(partition, bdinfo->devpath);
-            if (!lowerdir.empty()) overlay_lowerdirs[partition] = lowerdir;
-        }
+    AddImageEntries(&fstab, android_dir_path, is_recovery_mode, &overlay_lowerdirs);
+    if (!is_recovery_mode) {
+        AddUserdataDirEntries(&fstab, android_dir_path);
+        UseOverlayDirs(android_dir_path, &overlay_lowerdirs);
+        AddUserdataTmpfsEntries(&fstab);
     }
+    AddFirmwareDirEntry(&fstab);
 
-    if (!is_recovery_mode &&
-        (param_mount_system == MountSystemParam::STANDARD_PARTITIONS_WITH_PARTNAME ||
-         param_mount_system == MountSystemParam::ANY_BLOCK_DEVICES_AS_PARTITION)) {
-        for (const auto& [partition, bdinfo] : android_system_part_to_bdev_map) {
-            if (partition != bdinfo->android_system_partition) continue;
-            FstabEntry entry = {.blk_device = bdinfo->devpath,
-                                .mount_point = "/" + bdinfo->android_system_partition,
-                                .fs_mgr_flags = {.first_stage_mount = true}};
-            if (!bdinfo->rw) entry.flags |= MS_RDONLY;
-            for (const auto& fs_type : fs_types_for_system_partitions) {
-                entry.fs_type = fs_type;
-                fstab.push_back(entry);
-
-                if (fs_type == "ext4" && !(entry.flags & MS_RDONLY)) {
-                    auto flags_bak = entry.flags;
-                    entry.flags |= MS_RDONLY;
-                    fstab.push_back(entry);
-                    entry.flags = flags_bak;
-                }
-            }
-        }
-    }
-
-    if (!is_recovery_mode &&
-        param_mount_userdata == MountUserdataParam::STANDARD_PARTITIONS_WITH_PARTNAME) {
-        for (const auto& [partition, bdinfo] : android_userdata_part_to_bdev_map) {
-            if (partition == "cache" && !need_mount_cache) continue;
-            FstabEntry entry = {.blk_device = bdinfo->devpath,
-                                .fs_mgr_flags = {.first_stage_mount = true}};
-            entry.mount_point = bdinfo->partname == "userdata" ? "/data" : "/" + bdinfo->partname;
-            entry.fs_mgr_flags.no_fail = entry.mount_point != "/data";
-            for (const auto& fs_type : fs_types_for_userdata_partitions) {
-                entry.fs_type = fs_type;
-                fstab.push_back(entry);
-            }
-        }
-    }
-
-    if (param_mount_firmware == MountFirmwareParam::IMAGE ||
-        param_mount_firmware == MountFirmwareParam::IMAGE_COPY_TO_RAM ||
-        param_mount_system == MountSystemParam::IMAGES ||
-        param_mount_system == MountSystemParam::IMAGES_COPY_TO_RAM ||
-        param_mount_userdata == MountUserdataParam::IMAGES ||
-        param_mount_overlay == MountOverlayParam::IMAGES ||
-        param_mount_overlay == MountOverlayParam::IMAGES_COPY_TO_RAM) {
-        std::shared_ptr<BlockDeviceInfo> bdinfo = block_device_for_android_dir;
-        std::list<std::pair<std::string, std::string>> partition_img_list;
-        std::string firmware_img;
-
-        for (const auto& [image_type, image_name] : bdinfo->android_dir_have_images) {
-            std::string image_partition = image_name.substr(0, image_name.find_last_of('.'));
-            std::string image_src = android_dir_path + "/" + image_name;
-
-            if (image_type != ImageType::FIRMWARE && image_type != ImageType::SYSTEM &&
-                image_type != ImageType::USERDATA && image_type != ImageType::OVERLAY) {
-                continue;
-            }
-
-            // Ignore non-firmware images while in recovery mode
-            if (is_recovery_mode && image_type != ImageType::FIRMWARE) continue;
-
-            // Ignore firmware images while not mounting system from images
-            if (image_type == ImageType::FIRMWARE &&
-                param_mount_firmware != MountFirmwareParam::IMAGE &&
-                param_mount_firmware != MountFirmwareParam::IMAGE_COPY_TO_RAM) {
-                continue;
-            }
-
-            // Ignore system images while not mounting system from images
-            if (image_type == ImageType::SYSTEM && param_mount_system != MountSystemParam::IMAGES &&
-                param_mount_system != MountSystemParam::IMAGES_COPY_TO_RAM) {
-                continue;
-            }
-
-            // Ignore userdata images while not mounting userdata from images
-            if (image_type == ImageType::USERDATA &&
-                param_mount_userdata != MountUserdataParam::IMAGES) {
-                continue;
-            }
-
-            // Ignore overlay images while not mounting overlays from images
-            if (image_type == ImageType::OVERLAY &&
-                param_mount_overlay != MountOverlayParam::IMAGES &&
-                param_mount_overlay != MountOverlayParam::IMAGES_COPY_TO_RAM) {
-                continue;
-            }
-
-            if ((image_type == ImageType::FIRMWARE &&
-                 param_mount_firmware == MountFirmwareParam::IMAGE_COPY_TO_RAM) ||
-                (image_type == ImageType::SYSTEM &&
-                 param_mount_system == MountSystemParam::IMAGES_COPY_TO_RAM) ||
-                (image_type == ImageType::OVERLAY &&
-                 param_mount_overlay == MountOverlayParam::IMAGES_COPY_TO_RAM)) {
-                LOG(INFO) << "Copying image " << image_name << " to RAM";
-                std::string image_dst = kTmpfsImgDir + "/" + image_name;
-                fs::copy(image_src, image_dst, ec);
-                if (ec) LOG(FATAL) << "Failed to copy image " << image_name << " to RAM";
-                image_src = image_dst;
-            }
-
-            if (image_type == ImageType::FIRMWARE) {
-                firmware_img = image_src;
-            } else if (image_type == ImageType::OVERLAY) {
-                std::string partition = GetOverlayTarget(image_partition);
-                std::string loop_device = SetupLoopDevice(image_src, false);
-                if (loop_device.empty()) {
-                    LOG(ERROR) << "Failed to setup loop device for image " << image_src
-                               << ", ignoring it";
-                    continue;
-                }
-                std::string lowerdir = MountOverlaySource(partition, loop_device);
-                if (!lowerdir.empty()) overlay_lowerdirs[partition] = lowerdir;
-            } else {
-                partition_img_list.push_back({image_partition, image_src});
-            }
-        }
-
-        if (param_mount_firmware == MountFirmwareParam::IMAGE ||
-            param_mount_firmware == MountFirmwareParam::IMAGE_COPY_TO_RAM) {
-            if (firmware_img.empty()) {
-                LOG(FATAL) << "Firmware image was not found";
-            }
-            FstabEntry entry = {.mount_point = kFirmwareFstabMountPoint,
-                                .fs_mgr_flags = {.no_fail = true, .first_stage_mount = true}};
-            if (!bdinfo->rw) entry.flags |= MS_RDONLY;
-
-            entry.blk_device = SetupLoopDevice(firmware_img, bdinfo->rw);
-            if (entry.blk_device.empty()) {
-                LOG(FATAL) << "Failed to setup loop device for image " << firmware_img;
-            }
-
-            for (const auto& fs_type : fs_types_for_firmware) {
-                entry.fs_type = fs_type;
-                fstab.push_back(entry);
-            }
-        }
-
-        for (const auto& [part, img] : partition_img_list) {
-            if (part == "cache" && !need_mount_cache) continue;
-
-            FstabEntry entry = {.mount_point = kFirmwareFstabMountPoint,
-                                .fs_mgr_flags = {.first_stage_mount = true}};
-            if (!bdinfo->rw) entry.flags |= MS_RDONLY;
-
-            entry.blk_device = SetupLoopDevice(img, bdinfo->rw);
-            if (entry.blk_device.empty()) {
-                LOG(FATAL) << "Failed to setup loop device for image " << img;
-            }
-
-            entry.mount_point = part == "userdata" ? "/data" : "/" + part;
-
-            if (std::find(android_userdata_partitions.begin(), android_userdata_partitions.end(),
-                          part) != android_userdata_partitions.end()) {
-                // Like userdata partitions: writable only, only /data must be mounted
-                entry.fs_mgr_flags.no_fail = entry.mount_point != "/data";
-                for (const auto& fs_type : fs_types_for_userdata_partitions) {
-                    entry.fs_type = fs_type;
-                    fstab.push_back(entry);
-                }
-                continue;
-            }
-
-            for (const auto& fs_type : fs_types_for_system_partitions) {
-                entry.fs_type = fs_type;
-                fstab.push_back(entry);
-
-                if (fs_type == "ext4" && !(entry.flags & MS_RDONLY)) {
-                    auto flags_bak = entry.flags;
-                    entry.flags |= MS_RDONLY;
-                    fstab.push_back(entry);
-                    entry.flags = flags_bak;
-                }
-            }
-        }
-    }
-
-    if (!is_recovery_mode && param_mount_userdata == MountUserdataParam::BIND_MOUNT_DIR) {
-        std::shared_ptr<BlockDeviceInfo> bdinfo = block_device_for_android_dir;
-        for (const auto& subdir : bdinfo->android_dir_have_subdirs) {
-            if (std::find(android_userdata_partitions.begin(), android_userdata_partitions.end(),
-                          subdir) == android_userdata_partitions.end()) {
-                continue;
-            }
-            if (subdir == "cache" && !need_mount_cache) continue;
-            FstabEntry entry = {.blk_device = android_dir_path + "/" + subdir,
-                                .fs_type = "none",
-                                .flags = MS_BIND,
-                                .fs_mgr_flags = {.first_stage_mount = true}};
-            entry.mount_point = subdir == "userdata" ? "/data" : "/" + subdir;
-            fstab.push_back(std::move(entry));
-        }
-    }
-
-    if (!is_recovery_mode && param_mount_overlay == MountOverlayParam::DIRS) {
-        std::shared_ptr<BlockDeviceInfo> bdinfo = block_device_for_android_dir;
-        for (const auto& subdir : bdinfo->android_dir_have_subdirs) {
-            std::string partition = GetOverlayTarget(subdir);
-            if (partition.empty()) continue;
-            LOG(INFO) << "Using directory " << subdir << " as the overlay of system partition "
-                      << partition;
-            overlay_lowerdirs[partition] = android_dir_path + "/" + subdir;
-            overlay_dirs_used = true;
-        }
-    }
-
-    if (!is_recovery_mode && param_mount_userdata == MountUserdataParam::TMPFS) {
-        for (const auto& entry : fstab_userdata_on_tmpfs) {
-            fstab.push_back(std::move(entry));
-        }
-    }
-
-    if (param_mount_firmware == MountFirmwareParam::ALL_POSSIBLE_DIRS ||
-        param_mount_firmware == MountFirmwareParam::ONLY_ANDROID_DIR) {
-        std::shared_ptr<BlockDeviceInfo> bdinfo = block_device_for_firmware_dir;
-        if (bdinfo == block_device_for_android_dir) {
-            firmware_dir_path = kAndroidMountTarget + "/" + bdinfo->have_firmware_dir;
-        } else {
-            ret = mount(bdinfo->devpath.c_str(), kFirmwareMountTarget.c_str(),
-                        bdinfo->fs_type.c_str(), MS_RDONLY, bdinfo->mountopts.c_str());
-            if (ret) {
-                PLOG(FATAL) << "Unable to mount block device for firmware dir";
-            }
-            firmware_dir_path = kFirmwareMountTarget + "/" + bdinfo->have_firmware_dir;
-        }
-
-        FstabEntry entry = {.blk_device = firmware_dir_path,
-                            .mount_point = kFirmwareFstabMountPoint,
-                            .fs_type = "none",
-                            .flags = MS_BIND,
-                            .fs_mgr_flags = {.no_fail = true, .first_stage_mount = true}};
-        fstab.push_back(std::move(entry));
-    }
-
-    // Unmount block device for android dir if it's no longer used
-    // Allowing live boot users to eject the boot media afterwards
-    // Overlay directories are only used once mounted, below
+    // Unmount the android dir when unused, so that live boot media can be ejected. Overlay dirs
+    // are used once mounted.
+    bool overlay_dirs_used =
+            param_mount_overlay == MountOverlayParam::DIRS && !overlay_lowerdirs.empty();
     if (!is_recovery_mode && !overlay_dirs_used && umount(kAndroidMountTarget.c_str()) == 0) {
         LOG(INFO) << "umount " << kAndroidMountTarget << " successfully";
     }
 
-    // Overlays, read-only, before the addon fstab entries: those for the same mount points go on
-    // top of them. Mounted after SwitchRoot(), the one of /system on the /system directory.
-    for (const auto& [partition, lowerdir] : overlay_lowerdirs) {
-        FstabEntry entry = {.blk_device = partition + kOverlaySuffix,
-                            .mount_point = "/" + partition,
-                            .fs_type = "overlay",
-                            .flags = MS_RDONLY,
-                            .lowerdir = lowerdir + ":/" + partition,
-                            .fs_mgr_flags = {.no_fail = true, .first_stage_mount = true}};
-        fstab.push_back(std::move(entry));
-    }
-
-    if (!is_recovery_mode && !addon_fstab.empty()) {
+    AddOverlayEntries(&fstab, overlay_lowerdirs);
+    if (!is_recovery_mode) {
         for (auto& entry : addon_fstab) {
             fstab.push_back(std::move(entry));
         }
@@ -1197,8 +1112,6 @@ void OnPostBlockDevices(bool is_recovery_mode) {
     if (!DynamicMountHelpers::MountPartitions(fstab)) {
         LOG(FATAL) << "Failed to mount partitions";
     }
-
-    fstab.clear();
 }
 
 }  // namespace DynamicMountHandler

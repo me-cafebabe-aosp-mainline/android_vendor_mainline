@@ -47,7 +47,8 @@ Everything goes to the kernel log (`dmesg`, or the serial console).
 | `Block device <dev> have android directory: <dir>` | An Android directory was found |
 | `Block device <dev> have firmware directory: <dir>` | A firmware directory was found |
 | `Block device <dev> can be mounted as read-write` / `read-only` | Result of the probe |
-| `Set block device for system partition <p> to <dev>` | A slot is filled |
+| `Found block device <dev> for system partition <p>` | A candidate for a slot, see "Which device wins" in [DYNAMIC_MOUNT.md](DYNAMIC_MOUNT.md) |
+| `Using <dev> for ..., on another disk than the android dir` | No device for this slot on the disk of the Android directory |
 | `CanQuitUeventd: Missing block device for ...` | ueventd is still waiting for this |
 | `Exit generic_init ueventd` | First run done |
 | `Fstab entry: blk_device=... mount_point=... fs_type=...` | The generated fstab, one line per entry |
@@ -62,6 +63,7 @@ Everything goes to the kernel log (`dmesg`, or the serial console).
 |---------|--------------|-------|
 | `CanQuitUeventd: Missing block device for system partition X` repeats | Storage driver not loaded, or the partition is not named `X` | Ramdisk modules, `PARTNAME` of the partition, `androidboot.mount_system` |
 | `Missing block device for userdata partition` | Same, for `userdata` or `metadata` | `androidboot.mount_userdata` |
+| System or user data of another installation is mounted | Its partitions have the same names, and the Android directory is on its disk, or not found | `Using <dev> for ...` lines, `androidboot.android_dir_dev` |
 | `Missing block device for android dir` | No device has the directory | `androidboot.android_dir` (only that name when set), directory name (`android`, `boot/android`) |
 | `Missing block device for firmware dir` | No firmware directory found | `androidboot.mount_firmware=disable` if none is needed |
 | `No known filesystem detected for <dev>` | Filesystem driver missing | Add the module to the ramdisk |

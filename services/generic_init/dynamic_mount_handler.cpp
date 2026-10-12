@@ -83,6 +83,8 @@ struct BlockDeviceInfo {
     std::string devpath;
     std::string partname;
     std::string partuuid;
+    // The whole disk: devname itself for a disk
+    std::string disk;
 
     // uevent handler fields
     std::vector<std::string> links;
@@ -146,21 +148,24 @@ const std::list<std::string> possible_initrd_image_names = {
         "ramdisk",
 };
 
-std::map<std::string, std::shared_ptr<BlockDeviceInfo>> android_system_part_to_bdev_map = {
-        {"system", nullptr},  {"vendor", nullptr},
+// Devices found for a slot, in uevent order. PickDevice() chooses one.
+using Candidates = std::vector<std::shared_ptr<BlockDeviceInfo>>;
 
-        {"product", nullptr}, {"system_dlkm", nullptr}, {"system_ext", nullptr},
+std::map<std::string, Candidates> android_system_part_candidates = {
+        {"system", {}},  {"vendor", {}},
 
-        {"odm", nullptr},     {"odm_dlkm", nullptr},    {"vendor_dlkm", nullptr},
+        {"product", {}}, {"system_dlkm", {}}, {"system_ext", {}},
+
+        {"odm", {}},     {"odm_dlkm", {}},    {"vendor_dlkm", {}},
 };
 
 // Overlay partitions found, by the system partition they are for (all optional)
-std::map<std::string, std::shared_ptr<BlockDeviceInfo>> android_overlay_part_to_bdev_map;
+std::map<std::string, Candidates> android_overlay_part_candidates;
 
-std::map<std::string, std::shared_ptr<BlockDeviceInfo>> android_userdata_part_to_bdev_map = {
-        {"cache", nullptr},
-        {"metadata", nullptr},
-        {"userdata", nullptr},
+std::map<std::string, Candidates> android_userdata_part_candidates = {
+        {"cache", {}},
+        {"metadata", {}},
+        {"userdata", {}},
 };
 
 constexpr char kAddonFstabSuffixParam[] = "addon_fstab_suffix";
@@ -249,10 +254,12 @@ const std::string kTryMountTarget = "/mnt/vendor/generic_init/try";
 const std::string kImageSuffix = ".img";
 const std::string kOverlaySuffix = "_overlay";
 
-// How long to wait for overlay partitions (mount_overlay=std_parts), after everything required
-// was found. Whether they exist is unknown.
-constexpr auto kOverlayPartitionsWait = 5s;
+// How long to wait, after everything required was found, for overlay partitions
+// (mount_overlay=std_parts), whose existence is unknown, and for partitions on the disk of the
+// android dir, when only another disk had them so far
+constexpr auto kPartitionsWait = 5s;
 std::chrono::steady_clock::time_point overlay_partitions_deadline;
+std::chrono::steady_clock::time_point android_disk_deadline;
 
 Fstab fstab_userdata_on_tmpfs = {{.blk_device = "cache",
                                   .mount_point = "/cache",
@@ -673,13 +680,32 @@ void ParseBlockDevice(BlockDeviceInfo* info) {
     }
 }
 
-void SetSystemPartition(const std::string& partition, std::shared_ptr<BlockDeviceInfo> bdinfo) {
-    LOG(INFO) << "Set block device for system partition " << partition << " to " << bdinfo->devname;
-    android_system_part_to_bdev_map[partition] = bdinfo;
+// The device for a slot: the last one found on the disk of the android dir, since another
+// installation may be on another disk. Otherwise, unless android_disk_only, the last one found.
+std::shared_ptr<BlockDeviceInfo> PickDevice(const Candidates& candidates, bool android_disk_only) {
+    const auto& android = block_device_for_android_dir;
+    if (android != nullptr) {
+        auto it = std::find_if(candidates.rbegin(), candidates.rend(),
+                               [&](const auto& c) { return c->disk == android->disk; });
+        if (it != candidates.rend()) return *it;
+        if (android_disk_only) return nullptr;
+    }
+    return candidates.empty() ? nullptr : candidates.back();
+}
+
+void WarnIfOtherDisk(const Candidates& candidates, const std::string& what) {
+    if (PickDevice(candidates, true) != nullptr) return;
+    LOG(WARNING) << "Using " << PickDevice(candidates, false)->devname << " for " << what
+                 << ", on another disk than the android dir";
+}
+
+void AddSystemPartition(const std::string& partition, std::shared_ptr<BlockDeviceInfo> bdinfo) {
+    LOG(INFO) << "Found block device " << bdinfo->devname << " for system partition " << partition;
+    android_system_part_candidates[partition].push_back(bdinfo);
     for (const auto& subdir : bdinfo->android_system_partition_have_subdirs) {
-        LOG(INFO) << "Set block device for system partition subdir " << subdir << " to "
-                  << bdinfo->devname;
-        android_system_part_to_bdev_map[subdir] = bdinfo;
+        LOG(INFO) << "Found block device " << bdinfo->devname << " for system partition subdir "
+                  << subdir;
+        android_system_part_candidates[subdir].push_back(bdinfo);
     }
 }
 
@@ -688,29 +714,29 @@ void UpdateMountInfo(std::shared_ptr<BlockDeviceInfo> bdinfo) {
     if (!GetOverlayTarget(bdinfo->partname).empty()) {
         if (param_mount_overlay != MountOverlayParam::STANDARD_PARTITIONS_WITH_PARTNAME) return;
         std::string partition = GetOverlayTarget(bdinfo->partname);
-        LOG(INFO) << "Set block device for the overlay of system partition " << partition << " to "
-                  << bdinfo->devname;
-        android_overlay_part_to_bdev_map[partition] = bdinfo;
+        LOG(INFO) << "Found block device " << bdinfo->devname
+                  << " for the overlay of system partition " << partition;
+        android_overlay_part_candidates[partition].push_back(bdinfo);
         return;
     }
 
     if (param_mount_system == MountSystemParam::STANDARD_PARTITIONS_WITH_PARTNAME &&
         Contains(android_system_partitions, bdinfo->partname)) {
-        SetSystemPartition(bdinfo->partname, bdinfo);
+        AddSystemPartition(bdinfo->partname, bdinfo);
         return;
     }
 
     if (param_mount_system == MountSystemParam::ANY_BLOCK_DEVICES_AS_PARTITION &&
         Contains(android_system_partitions, bdinfo->android_system_partition)) {
-        SetSystemPartition(bdinfo->android_system_partition, bdinfo);
+        AddSystemPartition(bdinfo->android_system_partition, bdinfo);
         return;
     }
 
     if (param_mount_userdata == MountUserdataParam::STANDARD_PARTITIONS_WITH_PARTNAME &&
         Contains(android_userdata_partitions, bdinfo->partname)) {
-        LOG(INFO) << "Set block device for userdata partition " << bdinfo->partname << " to "
-                  << bdinfo->devname;
-        android_userdata_part_to_bdev_map[bdinfo->partname] = bdinfo;
+        LOG(INFO) << "Found block device " << bdinfo->devname << " for userdata partition "
+                  << bdinfo->partname;
+        android_userdata_part_candidates[bdinfo->partname].push_back(bdinfo);
         return;
     }
 
@@ -823,7 +849,10 @@ std::string MountAndroidDir() {
 
 void MountOverlayPartitions(OverlayLowerdirs* lowerdirs) {
     if (param_mount_overlay != MountOverlayParam::STANDARD_PARTITIONS_WITH_PARTNAME) return;
-    for (const auto& [partition, bdinfo] : android_overlay_part_to_bdev_map) {
+    for (const auto& [partition, candidates] : android_overlay_part_candidates) {
+        // Optional: not from another disk than the android dir
+        auto bdinfo = PickDevice(candidates, true);
+        if (bdinfo == nullptr) continue;
         std::string lowerdir = MountOverlaySource(partition, bdinfo->devpath);
         if (!lowerdir.empty()) (*lowerdirs)[partition] = lowerdir;
     }
@@ -834,9 +863,13 @@ void AddSystemPartitionEntries(Fstab* fstab) {
         param_mount_system != MountSystemParam::ANY_BLOCK_DEVICES_AS_PARTITION) {
         return;
     }
-    for (const auto& [partition, bdinfo] : android_system_part_to_bdev_map) {
+    for (const auto& [partition, candidates] : android_system_part_candidates) {
+        auto bdinfo = PickDevice(candidates, false);
         // Subdirs are mounted with the partition holding them
-        if (partition != bdinfo->android_system_partition) continue;
+        if (bdinfo == nullptr || partition != bdinfo->android_system_partition) continue;
+        if (param_mount_system == MountSystemParam::STANDARD_PARTITIONS_WITH_PARTNAME) {
+            WarnIfOtherDisk(candidates, "system partition " + partition);
+        }
         FstabEntry entry = {.blk_device = bdinfo->devpath,
                             .mount_point = "/" + partition,
                             .fs_mgr_flags = {.first_stage_mount = true}};
@@ -847,8 +880,10 @@ void AddSystemPartitionEntries(Fstab* fstab) {
 
 void AddUserdataPartitionEntries(Fstab* fstab) {
     if (param_mount_userdata != MountUserdataParam::STANDARD_PARTITIONS_WITH_PARTNAME) return;
-    for (const auto& [partition, bdinfo] : android_userdata_part_to_bdev_map) {
-        if (partition == "cache" && !need_mount_cache) continue;
+    for (const auto& [partition, candidates] : android_userdata_part_candidates) {
+        auto bdinfo = PickDevice(candidates, false);
+        if (bdinfo == nullptr || (partition == "cache" && !need_mount_cache)) continue;
+        WarnIfOtherDisk(candidates, "userdata partition " + partition);
         AddUserdataEntries(fstab, {.blk_device = bdinfo->devpath,
                                    .mount_point = MountPointOf(partition),
                                    .fs_mgr_flags = {.first_stage_mount = true}});
@@ -1014,6 +1049,9 @@ void OnBlockDeviceAdd(const android::init::Uevent& uevent, const std::string& de
     info.devpath = devpath;
     info.partname = uevent.partition_name;
     info.partuuid = uevent.partition_uuid;
+    // DEVPATH of a partition is .../block/<disk>/<partition>
+    std::string parent = fs::path(uevent.path).parent_path().filename();
+    info.disk = parent == "block" ? info.devname : parent;
     info.links = links;
     info.is_partition = std::isdigit(static_cast<unsigned char>(info.devname.back()));
     if (!ParseApfsBlockDevice(&info)) ParseBlockDevice(&info);
@@ -1031,17 +1069,38 @@ bool CanQuitUeventd(bool print_log) {
         ret = false;
         return print_log;
     };
+    // Whether a slot found by name only has devices on another disk than the android dir. Not
+    // for blk_devices, where every disk may hold one partition.
+    bool other_disk = false;
+    auto found = [&](const Candidates& candidates, const std::string& what, bool by_name) {
+        if (PickDevice(candidates, false) == nullptr) return missing(what);
+        if (by_name && PickDevice(candidates, true) == nullptr) other_disk = true;
+        return true;
+    };
+    // Starts the wait at the first call, returns whether it is over
+    auto waited = [&, function = __FUNCTION__](std::chrono::steady_clock::time_point* deadline,
+                                               const std::string& what) {
+        auto now = std::chrono::steady_clock::now();
+        if (*deadline == std::chrono::steady_clock::time_point()) {
+            LOG(INFO) << function << ": Waiting for " << what;
+            *deadline = now + kPartitionsWait;
+        }
+        return now >= *deadline;
+    };
 
     if (param_mount_system == MountSystemParam::STANDARD_PARTITIONS_WITH_PARTNAME ||
         param_mount_system == MountSystemParam::ANY_BLOCK_DEVICES_AS_PARTITION) {
-        for (const auto& [part, bdev] : android_system_part_to_bdev_map) {
-            if (bdev == nullptr && !missing("system partition " + part)) return false;
+        for (const auto& [part, candidates] : android_system_part_candidates) {
+            if (!found(candidates, "system partition " + part,
+                       param_mount_system == MountSystemParam::STANDARD_PARTITIONS_WITH_PARTNAME)) {
+                return false;
+            }
         }
     }
     if (param_mount_userdata == MountUserdataParam::STANDARD_PARTITIONS_WITH_PARTNAME) {
-        for (const auto& [part, bdev] : android_userdata_part_to_bdev_map) {
+        for (const auto& [part, candidates] : android_userdata_part_candidates) {
             if (part == "cache" && !need_mount_cache) continue;
-            if (bdev == nullptr && !missing("userdata partition " + part)) return false;
+            if (!found(candidates, "userdata partition " + part, true)) return false;
         }
     }
     if (need_android_dir && block_device_for_android_dir == nullptr && !missing("android dir")) {
@@ -1050,21 +1109,23 @@ bool CanQuitUeventd(bool print_log) {
     if (need_firmware_dir && block_device_for_firmware_dir == nullptr && !missing("firmware dir")) {
         return false;
     }
+    if (ret && other_disk &&
+        !waited(&android_disk_deadline, "partitions on the disk of the android dir")) {
+        return false;
+    }
     if (ret && param_mount_overlay == MountOverlayParam::STANDARD_PARTITIONS_WITH_PARTNAME) {
-        // Wait a bit for overlay partitions, unless every system partition has one
+        // Unless every system partition has one
         bool all_found = false;
-        for (const auto& [part, bdev] : android_system_part_to_bdev_map) {
+        for (const auto& [part, candidates] : android_system_part_candidates) {
+            auto bdev = PickDevice(candidates, false);
             if (bdev == nullptr || part != bdev->android_system_partition) continue;
-            all_found = android_overlay_part_to_bdev_map.contains(part);
+            auto overlay = android_overlay_part_candidates.find(part);
+            all_found = overlay != android_overlay_part_candidates.end() &&
+                        PickDevice(overlay->second, true) != nullptr;
             if (!all_found) break;
         }
-        if (!all_found) {
-            auto now = std::chrono::steady_clock::now();
-            if (overlay_partitions_deadline == std::chrono::steady_clock::time_point()) {
-                LOG(INFO) << __FUNCTION__ << ": Waiting for overlay partitions";
-                overlay_partitions_deadline = now + kOverlayPartitionsWait;
-            }
-            if (now < overlay_partitions_deadline) return false;
+        if (!all_found && !waited(&overlay_partitions_deadline, "overlay partitions")) {
+            return false;
         }
     }
     return ret;

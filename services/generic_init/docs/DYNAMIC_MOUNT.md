@@ -56,6 +56,7 @@ What each parameter makes the handler wait for:
 | `mount_firmware=all_possible_dirs` or `only_android_dir` | A block device with a firmware directory |
 | Any image mode, `bind_mount_dir`, `mount_overlay=dirs` | A block device with the Android directory |
 | `mount_overlay=std_parts` | Nothing more, but 5 more seconds unless every system partition found has an overlay partition. Overlay partitions are optional, so whether more will appear is unknown |
+| `std_parts`: a system or userdata partition found only on other disks than the Android directory | 5 more seconds for one on the disk of the Android directory, then the other disk's is used. Not with `blk_devices`, where each disk may hold one partition |
 | `imgs`, `tmpfs`, `disable` | Nothing for that part |
 
 ## Probing a block device
@@ -109,8 +110,11 @@ Image names (without `.img`):
 | Android directory | The last device that has it. With `androidboot.android_dir_dev`, only that device | The same |
 | Firmware directory | The last device that has it | The same |
 
-If two devices claim the same slot, the later uevent replaces the
-earlier one. A device with a `PARTNAME` ending in `_overlay` (of a system
+If two devices claim the same slot, a device on the disk of the Android
+directory wins, since another installation may be on another disk.
+Among the rest, the later uevent wins. Overlay partitions are only taken
+from the disk of the Android directory. Without an Android directory,
+the later uevent wins. A device with a `PARTNAME` ending in `_overlay` (of a system
 partition) is never used for anything else, even with a `build.prop`.
 
 ## Generating the fstab

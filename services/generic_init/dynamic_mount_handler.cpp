@@ -987,7 +987,10 @@ void AddUserdataTmpfsEntries(Fstab* fstab) {
 
 void AddFirmwareDirEntry(Fstab* fstab) {
     if (!need_firmware_dir) return;
-    const auto& bdinfo = block_device_for_firmware_dir;
+    // The android dir's device first: the Linux system it is installed beside, not another one
+    auto bdinfo = block_device_for_firmware_dir;
+    const auto& android = block_device_for_android_dir;
+    if (android != nullptr && !android->have_firmware_dir.empty()) bdinfo = android;
     std::string firmware_dir_path;
     if (bdinfo == block_device_for_android_dir) {
         firmware_dir_path = kAndroidMountTarget + "/" + bdinfo->have_firmware_dir;

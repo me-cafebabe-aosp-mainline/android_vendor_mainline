@@ -108,7 +108,7 @@ Image names (without `.img`):
 | Userdata partitions | `PARTNAME` is `cache`, `userdata` or `metadata` | n/a |
 | Overlay partitions (`mount_overlay=std_parts`) | `PARTNAME` is `<system partition>_overlay` | The same |
 | Android directory | The last device that has it. With `androidboot.android_dir_dev`, only that device | The same |
-| Firmware directory | The last device that has it | The same |
+| Firmware directory | The device of the Android directory, if it has one. Otherwise the last device that has it | The same |
 
 If two devices claim the same slot, a device on the disk of the Android
 directory wins, since another installation may be on another disk.

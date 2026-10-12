@@ -41,7 +41,7 @@ bootconfig. Unset means the default.
 | `androidboot.mount_userdata` | `std_parts` | `std_parts`, `imgs`, `bind_mount_dir`, `tmpfs` |
 | `androidboot.mount_overlay` | `disable` | `disable`, `std_parts`, `imgs`, `imgs_ram`, `dirs` |
 | `androidboot.mount_firmware` | `all_possible_dirs` | `all_possible_dirs` (or `true`), `disable` (or `false`), `only_android_dir`, `img`, `img_ram` |
-| `androidboot.android_dir` | none | Directory name to look for first |
+| `androidboot.android_dir` | none | Name of the Android directory; unset: `android` or `boot/android` |
 | `androidboot.addon_fstab_suffix` | none | Comma separated suffixes |
 
 An invalid value is logged and the default stays.
@@ -80,7 +80,7 @@ Everything learned is stored per device and used by `UpdateMountInfo()`.
 | System partition | `/system/build.prop`, or `build.prop` or `etc/build.prop` with a `ro.<part>.build.id=` line (`blk_devices` mode) |
 | Partitions inside | In a `system` device: `product`, `system_dlkm`, `system_ext`, `vendor`, and `vendor/{odm,odm_dlkm,vendor_dlkm}`. In a `vendor` device: `odm`, `odm_dlkm`, `vendor_dlkm`. Such partitions need no device of their own |
 | `/cache` directory in `system` | Marks `cache` as needing a mount |
-| Android directory | `androidboot.android_dir`, then `android`, then `boot/android` |
+| Android directory | `androidboot.android_dir` only, if set. Otherwise `android`, then `boot/android` |
 | Images | `*.img` files in the Android directory, typed by name (below) |
 | Subdirectories | Directories in the Android directory, except `firmware` |
 | Firmware directory | `<android dir>/firmware`, `usr/lib/firmware`, `lib/firmware`, `linux-firmware`, `firmware`. With `only_android_dir`, only the first |

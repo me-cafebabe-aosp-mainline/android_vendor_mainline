@@ -450,7 +450,9 @@ void ParseBlockDevice_CheckDirs(BlockDeviceInfo* info) {
 
     if (!info->android_system_partition.empty()) return;
 
-    std::list<std::string> possible_android_dirs = {config_android_dir, "android", "boot/android"};
+    // Only the configured one when set: another installation or media must not be used instead
+    std::list<std::string> possible_android_dirs = {"android", "boot/android"};
+    if (!config_android_dir.empty()) possible_android_dirs = {config_android_dir};
     for (const auto& android_dir : possible_android_dirs) {
         if (android_dir.empty()) continue;
         if (TryAccessDir(kTryMountTarget + "/" + android_dir)) {

@@ -67,11 +67,14 @@ For every `add` uevent of a block device, except names starting with
 1. Try APFS first: volumes 0 to 19 with `vol=N`. A volume counts only if
    it holds an Android directory.
 2. Otherwise mount it read-only on `try`, testing in order: `ext4`, `f2fs`,
-   `erofs`, `squashfs`, `vfat`, `ntfs`, `iso9660`, `udf`. Only `EINVAL` and
-   `ENODEV` mean "try the next one".
+   `erofs`, `squashfs`, `vfat`, `exfat`, `ntfs`, `ntfs3`, `iso9660`, `udf`.
+   Only `EINVAL` and `ENODEV` mean "try the next one". The driver must be
+   in the ramdisk: exFAT and NTFS are what Windows tools format USB drives
+   with when they copy the files of the live ISO.
 3. Read the filesystem UUID, as blkid shows it: the UUID of `ext4`,
-   `f2fs` and `erofs`, the volume ID of `vfat` (`XXXX-XXXX`), the serial
-   number of `ntfs` (16 hex digits). For `androidboot.android_dir_dev=UUID=`.
+   `f2fs` and `erofs`, the volume ID of `vfat` and `exfat` (`XXXX-XXXX`),
+   the serial number of `ntfs` and `ntfs3` (16 hex digits). For
+   `androidboot.android_dir_dev=UUID=`.
 4. Check what is inside (below).
 5. Try a read-write remount, to know if it is writable.
 6. Unmount.

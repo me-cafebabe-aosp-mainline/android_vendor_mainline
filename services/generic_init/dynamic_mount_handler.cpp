@@ -428,8 +428,8 @@ std::string DetermineAndroidPartitionFromBuildProp(const std::string& path) {
 std::string TryMountAndReturnFsType(const std::string& devpath, unsigned long mountflags) {
     bool ro = mountflags & MS_RDONLY;
     int ret, save_errno;
-    const std::list<std::string> try_mount_fs_types = {"ext4", "f2fs", "erofs",   "squashfs",
-                                                       "vfat", "ntfs", "iso9660", "udf"};
+    const std::list<std::string> try_mount_fs_types = {"ext4",  "f2fs", "erofs", "squashfs", "vfat",
+                                                       "exfat", "ntfs", "ntfs3", "iso9660",  "udf"};
     for (const auto& try_fs_type : try_mount_fs_types) {
         errno = 0;
         ret = mount(devpath.c_str(), kTryMountTarget.c_str(), try_fs_type.c_str(), mountflags,
@@ -451,7 +451,7 @@ std::string TryMountAndReturnFsType(const std::string& devpath, unsigned long mo
 }
 
 // The filesystem UUID of a device as blkid and GRUB show it, or "": EXT4, F2FS, EROFS (the UUID),
-// FAT (the volume ID, XXXX-XXXX), NTFS (the serial number, 16 hex digits)
+// FAT and exFAT (the volume ID, XXXX-XXXX), NTFS (the serial number, 16 hex digits)
 std::string ReadFsUuid(const std::string& devpath, const std::string& fs_type) {
     unique_fd fd(TEMP_FAILURE_RETRY(open(devpath.c_str(), O_RDONLY | O_CLOEXEC)));
     if (fd.get() == -1) return "";
@@ -474,7 +474,10 @@ std::string ReadFsUuid(const std::string& devpath, const std::string& fs_type) {
         if (!read_at(fat_sectors[0] || fat_sectors[1] ? 0x27 : 0x43, buf, 4)) return "";
         return StringPrintf("%02X%02X-%02X%02X", buf[3], buf[2], buf[1], buf[0]);
     }
-    if (fs_type == "ntfs" && read_at(0x48, buf, 8)) {
+    if (fs_type == "exfat" && read_at(0x64, buf, 4)) {
+        return StringPrintf("%02X%02X-%02X%02X", buf[3], buf[2], buf[1], buf[0]);
+    }
+    if ((fs_type == "ntfs" || fs_type == "ntfs3") && read_at(0x48, buf, 8)) {
         return StringPrintf("%02X%02X%02X%02X%02X%02X%02X%02X", buf[7], buf[6], buf[5], buf[4],
                             buf[3], buf[2], buf[1], buf[0]);
     }

@@ -556,6 +556,27 @@ void term(int signum)
 	done = 1;
 }
 
+#define BITS_TO_BYTES(n) (((n) + 7) / 8)
+
+/*
+ * Returns 1 if the device looks like a touchscreen: it reports absolute X/Y
+ * axes and BTN_TOUCH. Keyboards may expose EV_ABS too (e.g. ABS_MISC on
+ * consumer/vendor HID interfaces), so EV_ABS alone is not enough.
+ */
+static int is_touchscreen(int fd)
+{
+	unsigned char abs[BITS_TO_BYTES(ABS_CNT)] = { 0 };
+	unsigned char keys[BITS_TO_BYTES(KEY_CNT)] = { 0 };
+
+	if (ioctl(fd, EVIOCGBIT(EV_ABS, sizeof(abs)), abs) == -1
+	    || ioctl(fd, EVIOCGBIT(EV_KEY, sizeof(keys)), keys) == -1)
+		return 0;
+	if (!(abs[ABS_X / 8] >> (ABS_X % 8) & 1)
+	    || !(abs[ABS_Y / 8] >> (ABS_Y % 8) & 1))
+		return 0;
+	return keys[BTN_TOUCH / 8] >> (BTN_TOUCH % 8) & 1;
+}
+
 int main(int argc, char *argv[])
 {
 	char *p = NULL;
@@ -674,8 +695,7 @@ int main(int argc, char *argv[])
 			if ((fdinput =
 			     openat(dirfd(inputdevs), dptr->d_name,
 				    O_RDONLY)) != -1
-			    && ioctl(fdinput, EVIOCGBIT(0, sizeof(key)),
-				     &key) != -1 && key >> EV_ABS & 1)
+			    && is_touchscreen(fdinput))
 				break;
 			if (fdinput != -1) {
 				close(fdinput);

@@ -131,12 +131,13 @@ void StartConsole(const std::string& cmdline, const std::string& program) {
 
     if (console) console = SetupConsole();
 
-    LOG(INFO) << "Attempting to run /first_stage.sh...";
-
-    pid_t first_stage_sh_pid;
-    if (SpawnImage("/first_stage.sh", &first_stage_sh_pid)) {
-        waitpid(first_stage_sh_pid, nullptr, 0);
-        LOG(INFO) << "/first_stage.sh exited";
+    for (const auto& sh : {"/first_stage.sh", "/vendor/bin/bootstrap/first_stage.sh"}) {
+        LOG(INFO) << "Attempting to run " << sh;
+        pid_t first_stage_sh_pid;
+        if (SpawnImage(sh, &first_stage_sh_pid)) {
+            waitpid(first_stage_sh_pid, nullptr, 0);
+            LOG(INFO) << sh << " exited";
+        }
     }
 
     if (console) {

@@ -13,6 +13,7 @@ renamed paths or reformatted. Tests and unused modules are removed.
 |------|---------|
 | `dynamic_mount_handler.{h,cpp}` | Finds block devices and generates the fstab. See [DYNAMIC_MOUNT.md](DYNAMIC_MOUNT.md) |
 | `dynamic_mount_helpers.{h,cpp}` | Mounts the fstab: system-as-root switch, overlayfs |
+| `iso_file.{h,cpp}`, `ventoy_image.{h,cpp}` | Finds an ISO booted as a file and attaches it to a loop device. See [DYNAMIC_MOUNT.md](DYNAMIC_MOUNT.md) |
 | `coldboot_runner_noparallel.cpp` | Cold boot handled one uevent at a time |
 | `docs/` | These documents |
 

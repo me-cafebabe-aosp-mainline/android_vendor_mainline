@@ -55,6 +55,7 @@ path. It is a copy, so every difference is a future merge conflict.
 |------|------|
 | `first_stage_init.cpp` | The whole first stage sequence |
 | `dynamic_mount_handler.*`, `dynamic_mount_helpers.*` | Block device discovery and mounting |
+| `iso_file.*`, `ventoy_image.*` | An ISO booted as a file (Ventoy, GRUB loopback), as a block device |
 | `ueventd.cpp`, `devices.cpp`, `firmware_handler.cpp`, `modalias_handler.cpp`, `coldboot*.cpp` | ueventd, with the first run and second run logic |
 | `first_stage_console.*` | The debug console |
 | `Android.bp` | Modules `generic_init_first_stage`, `generic_init_second_stage.recovery`, `libgeneric_init` |

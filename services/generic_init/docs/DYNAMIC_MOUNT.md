@@ -81,6 +81,34 @@ For every `add` uevent of a block device, except names starting with
 
 Everything learned is stored per device and used by `UpdateMountInfo()`.
 
+### An ISO booted as a file
+
+Ventoy, or GRUB's `loopback`, boots an ISO file from a partition. Linux
+sees the partition, not the ISO, so `iso_file.cpp` finds the file and
+attaches it to a loop device, which is probed like any other device: the
+ISO9660 filesystem of the live ISO.
+
+- `androidboot.android_iso_uuid=<UUID>`: the UUID of the ISO, as GRUB and
+  blkid show it (`YYYY-MM-DD-HH-mm-ss-hh`, from the modification date of
+  its volume descriptor). The live ISO's GRUB passes it when its root is
+  an ISO9660 filesystem. Every probed filesystem without an Android
+  directory, but ISO9660 and UDF, is searched for `*.iso` files with that
+  UUID, 3 directory levels deep and 20000 entries at most.
+- Ventoy under UEFI says which file it booted, in the EFI variable
+  `VentoyOsParam` (`ventoy_image.cpp`, efivarfs mounted for the time of
+  reading it): its disk (the size, and the GUID Ventoy writes at offset
+  `0x180` of its first sector), the partition and the path. That
+  partition needs no search. Under BIOS, Ventoy leaves its parameters only
+  in base memory, which `/dev/mem` reads as zeros.
+- The partition stays mounted read-only on
+  `/mnt/vendor/generic_init/iso`. Its driver must be in the ramdisk
+  (exFAT, the default of Ventoy, and NTFS are).
+
+Ventoy must boot the ISO as it is, in its "compatible" mode: otherwise it
+changes the initrd for its own `/init`, which `rdinit=` does not run. The
+live ISO asks for it with `VENTOY COMPATIBLE` in its publisher field
+(`device/mainline/generic/build/tasks/20-liveisoimage.mk`).
+
 ### What is recognized
 
 | Found | How |

@@ -5,7 +5,9 @@
 
 #include "dynamic_mount_handler.h"
 #include "dynamic_mount_helpers.h"
+#include "iso_file.h"
 #include "util.h"
+#include "ventoy_image.h"
 
 #include <android-base/file.h>
 #include <android-base/logging.h>
@@ -67,6 +69,9 @@ std::string config_android_dir;
 // and its value
 std::string config_android_dir_dev_key;
 std::string config_android_dir_dev_value;
+// androidboot.android_iso_uuid: the UUID of the ISO image holding the android dir, when it may be
+// a file of a partition
+std::string config_android_iso_uuid;
 
 enum class ImageType {
     UNKNOWN = 0,
@@ -103,6 +108,8 @@ struct BlockDeviceInfo {
     std::string have_firmware_dir;
     std::vector<std::pair<ImageType, std::string>> android_dir_have_images;
     std::vector<std::string> android_dir_have_subdirs;
+    // The ISO image of androidboot.android_iso_uuid, as a file of this filesystem
+    std::string have_iso_file;
 };
 
 // devname, BlockDeviceInfo
@@ -112,6 +119,10 @@ std::shared_ptr<BlockDevices> block_devices;
 bool need_android_dir = false;
 bool need_firmware_dir = false;
 bool need_mount_cache = false;
+// An ISO image file is attached as a device, once
+bool iso_file_attached = false;
+// The drive Ventoy booted from, once seen
+std::string ventoy_disk;
 
 constexpr char kMountOptsRo[] = "";
 constexpr char kMountOptsRw[] = "discard";
@@ -171,6 +182,7 @@ std::map<std::string, Candidates> android_userdata_part_candidates = {
 constexpr char kAddonFstabSuffixParam[] = "addon_fstab_suffix";
 constexpr char kAndroidDirParam[] = "android_dir";
 constexpr char kAndroidDirDevParam[] = "android_dir_dev";
+constexpr char kAndroidIsoUuidParam[] = "android_iso_uuid";
 constexpr char kMountFirmwareParam[] = "mount_firmware";
 constexpr char kMountOverlayParam[] = "mount_overlay";
 constexpr char kMountSystemParam[] = "mount_system";
@@ -378,6 +390,7 @@ void ParseConfig(void) {
         }
     }
     fs_mgr_get_boot_config(kAndroidDirParam, &config_android_dir);
+    fs_mgr_get_boot_config(kAndroidIsoUuidParam, &config_android_iso_uuid);
 
     if (fs_mgr_get_boot_config(kAndroidDirDevParam, &tmp)) {
         auto equal_sign = tmp.find('=');
@@ -518,6 +531,16 @@ void ParseBlockDevice_CheckDirs(BlockDeviceInfo* info) {
             LOG(INFO) << "Block device " << devpath << " have android directory: " << android_dir;
             info->have_android_dir = android_dir;
             break;
+        }
+    }
+
+    if (info->have_android_dir.empty() && info->have_iso_file.empty() &&
+        !config_android_iso_uuid.empty() && !iso_file_attached && info->fs_type != "iso9660" &&
+        info->fs_type != "udf") {
+        info->have_iso_file = IsoFile::Find(kTryMountTarget, config_android_iso_uuid);
+        if (!info->have_iso_file.empty()) {
+            LOG(INFO) << "Block device " << devpath << " have the ISO image "
+                      << info->have_iso_file;
         }
     }
 
@@ -1024,6 +1047,15 @@ void AddOverlayEntries(Fstab* fstab, const OverlayLowerdirs& lowerdirs) {
     }
 }
 
+// Probes the device and records what it can be used for
+std::shared_ptr<BlockDeviceInfo> AddBlockDevice(BlockDeviceInfo info) {
+    if (!ParseApfsBlockDevice(&info)) ParseBlockDevice(&info);
+    auto bdinfo = std::make_shared<BlockDeviceInfo>(std::move(info));
+    block_devices->insert({bdinfo->devpath, bdinfo});
+    UpdateMountInfo(bdinfo);
+    return bdinfo;
+}
+
 }  // namespace
 
 void OnPreBlockDevices(void) {
@@ -1034,6 +1066,7 @@ void OnPreBlockDevices(void) {
     mkdir_recursive(kTryMountTarget, 0755);
     block_devices = std::make_shared<BlockDevices>();
     ParseConfig();
+    VentoyImage::ReadParams();
 }
 
 void OnBlockDeviceAdd(const android::init::Uevent& uevent, const std::string& devpath,
@@ -1060,9 +1093,22 @@ void OnBlockDeviceAdd(const android::init::Uevent& uevent, const std::string& de
     info.disk = parent == "block" ? info.devname : parent;
     info.links = links;
     info.is_partition = std::isdigit(static_cast<unsigned char>(info.devname.back()));
-    if (!ParseApfsBlockDevice(&info)) ParseBlockDevice(&info);
-    block_devices->insert({devpath, std::make_shared<BlockDeviceInfo>(info)});
-    UpdateMountInfo(block_devices->at(devpath));
+    // An ISO image booted as a file of this partition: a device of its own, like a CD. Ventoy
+    // tells which under UEFI (a partition comes after its disk), otherwise its UUID is searched.
+    if (!iso_file_attached && !ventoy_disk.empty() && info.disk == ventoy_disk &&
+        uevent.partition_num == VentoyImage::PartitionNumber()) {
+        info.have_iso_file = VentoyImage::Path();
+    }
+    auto bdinfo = AddBlockDevice(info);
+    if (info.disk == info.devname && VentoyImage::IsOnDisk(devpath)) ventoy_disk = info.devname;
+
+    if (iso_file_attached) return;
+    std::string iso_path = bdinfo->have_iso_file;
+    if (iso_path.empty()) return;
+    std::string loop = IsoFile::Attach(devpath, bdinfo->fs_type, iso_path);
+    if (loop.empty()) return;
+    iso_file_attached = true;
+    AddBlockDevice({.devname = "iso", .devpath = loop, .disk = "iso"});
 }
 
 // TODO: Handle block device removal?

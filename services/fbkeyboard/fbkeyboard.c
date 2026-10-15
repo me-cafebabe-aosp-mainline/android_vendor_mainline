@@ -560,13 +560,14 @@ void term(int signum)
 
 /*
  * Returns 1 if the device looks like a touchscreen: it reports absolute X/Y
- * axes and BTN_TOUCH. Keyboards may expose EV_ABS too (e.g. ABS_MISC on
+ * axes and BTN_TOUCH, and is not a trackpad. Keyboards may expose EV_ABS too (e.g. ABS_MISC on
  * consumer/vendor HID interfaces), so EV_ABS alone is not enough.
  */
 static int is_touchscreen(int fd)
 {
 	unsigned char abs[BITS_TO_BYTES(ABS_CNT)] = { 0 };
 	unsigned char keys[BITS_TO_BYTES(KEY_CNT)] = { 0 };
+	unsigned char props[BITS_TO_BYTES(INPUT_PROP_CNT)] = { 0 };
 
 	if (ioctl(fd, EVIOCGBIT(EV_ABS, sizeof(abs)), abs) == -1
 	    || ioctl(fd, EVIOCGBIT(EV_KEY, sizeof(keys)), keys) == -1)
@@ -574,7 +575,18 @@ static int is_touchscreen(int fd)
 	if (!(abs[ABS_X / 8] >> (ABS_X % 8) & 1)
 	    || !(abs[ABS_Y / 8] >> (ABS_Y % 8) & 1))
 		return 0;
-	return keys[BTN_TOUCH / 8] >> (BTN_TOUCH % 8) & 1;
+	if (!(keys[BTN_TOUCH / 8] >> (BTN_TOUCH % 8) & 1))
+		return 0;
+
+	/* Touchscreens are direct; trackpads are pointers and report fingers. */
+	if (ioctl(fd, EVIOCGPROP(sizeof(props)), props) != -1
+	    && (props[INPUT_PROP_DIRECT / 8] >> (INPUT_PROP_DIRECT % 8) & 1))
+		return 1;
+	if (props[INPUT_PROP_POINTER / 8] >> (INPUT_PROP_POINTER % 8) & 1)
+		return 0;
+	if (props[INPUT_PROP_BUTTONPAD / 8] >> (INPUT_PROP_BUTTONPAD % 8) & 1)
+		return 0;
+	return !(keys[BTN_TOOL_FINGER / 8] >> (BTN_TOOL_FINGER % 8) & 1);
 }
 
 int main(int argc, char *argv[])

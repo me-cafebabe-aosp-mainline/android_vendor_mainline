@@ -1125,7 +1125,8 @@ void OnBlockDeviceAdd(const android::init::Uevent& uevent, const std::string& de
     std::string parent = fs::path(uevent.path).parent_path().filename();
     info.disk = !nested_disk.empty() ? nested_disk : parent == "block" ? info.devname : parent;
     info.links = links;
-    info.is_partition = std::isdigit(static_cast<unsigned char>(info.devname.back()));
+    // Not by the name: a disk can end with a digit (mmcblk0, nvme0n1, usbblk0)
+    info.is_partition = info.disk != info.devname;
     // An ISO image booted as a file of this partition: a device of its own, like a CD. Ventoy
     // tells which under UEFI (a partition comes after its disk), otherwise its UUID is searched.
     if (!iso_file_attached && !ventoy_disk.empty() && info.disk == ventoy_disk &&

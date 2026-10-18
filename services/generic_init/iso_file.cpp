@@ -7,31 +7,26 @@
 
 #include <android-base/file.h>
 #include <android-base/logging.h>
-#include <android-base/parseint.h>
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 #include <android-base/unique_fd.h>
 #include <dirent.h>
 #include <fcntl.h>
-#include <linux/loop.h>
 #include <sys/ioctl.h>
 #include <sys/mount.h>
 #include <sys/stat.h>
-#include <sys/sysmacros.h>
 #include <unistd.h>
 
 #include <cstring>
 #include <memory>
 #include <vector>
 
+#include "loop_device.h"
+
 namespace IsoFile {
 
 using android::base::EndsWithIgnoreCase;
-using android::base::ParseUint;
-using android::base::ReadFileToString;
-using android::base::Split;
 using android::base::StringPrintf;
-using android::base::Trim;
 using android::base::unique_fd;
 
 namespace {
@@ -42,41 +37,6 @@ constexpr char kMountTarget[] = "/mnt/vendor/generic_init/iso";
 // usually near the root, and a system partition holds many files
 constexpr int kMaxDepth = 3;
 constexpr int kMaxEntries = 20000;
-
-// A loop device without waiting for its node: generic_init is ueventd, and runs this while
-// handling a uevent
-std::string AttachLoop(const std::string& image) {
-    unique_fd image_fd(TEMP_FAILURE_RETRY(open(image.c_str(), O_RDONLY | O_CLOEXEC)));
-    if (image_fd.get() == -1) {
-        PLOG(ERROR) << "Cannot open " << image;
-        return "";
-    }
-    unique_fd control(TEMP_FAILURE_RETRY(open("/dev/loop-control", O_RDWR | O_CLOEXEC)));
-    int number = control.get() == -1 ? -1 : ioctl(control.get(), LOOP_CTL_GET_FREE);
-    if (number < 0) {
-        PLOG(ERROR) << "No free loop device for " << image;
-        return "";
-    }
-    std::string name = "loop" + std::to_string(number);
-    std::string dev;
-    std::vector<std::string> numbers;
-    if (ReadFileToString("/sys/block/" + name + "/dev", &dev)) numbers = Split(Trim(dev), ":");
-    unsigned int major, minor;
-    std::string path = "/dev/block/" + name;
-    if (numbers.size() != 2 || !ParseUint(numbers[0], &major) || !ParseUint(numbers[1], &minor) ||
-        (mknod(path.c_str(), S_IFBLK | 0600, makedev(major, minor)) != 0 && errno != EEXIST)) {
-        PLOG(ERROR) << "Cannot create " << path;
-        return "";
-    }
-    unique_fd loop_fd(TEMP_FAILURE_RETRY(open(path.c_str(), O_RDONLY | O_CLOEXEC)));
-    struct loop_config config = {.fd = static_cast<uint32_t>(image_fd.get()),
-                                 .info = {.lo_flags = LO_FLAGS_READ_ONLY}};
-    if (loop_fd.get() == -1 || ioctl(loop_fd.get(), LOOP_CONFIGURE, &config) != 0) {
-        PLOG(ERROR) << "Cannot attach " << image << " to " << path;
-        return "";
-    }
-    return path;
-}
 
 std::string FindIn(const std::string& dir, const std::string& relative, const std::string& uuid,
                    int depth, int* entries) {
@@ -140,7 +100,9 @@ std::string Attach(const std::string& partition_devpath, const std::string& fs_t
         return "";
     }
     std::string image = kMountTarget + path;
-    std::string loop = AttachLoop(image);
+    unique_fd image_fd(TEMP_FAILURE_RETRY(open(image.c_str(), O_RDONLY | O_CLOEXEC)));
+    if (image_fd.get() == -1) PLOG(ERROR) << "Cannot open " << image;
+    std::string loop = image_fd.get() == -1 ? "" : LoopDevice::Attach(image_fd.get(), true, false);
     if (loop.empty()) {
         umount(kMountTarget);
         return "";

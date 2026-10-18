@@ -6,6 +6,8 @@
 #include "dynamic_mount_handler.h"
 #include "dynamic_mount_helpers.h"
 #include "iso_file.h"
+#include "loop_device.h"
+#include "partition_table.h"
 #include "util.h"
 #include "ventoy_image.h"
 
@@ -15,6 +17,7 @@
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 #include <android-base/unique_fd.h>
+#include <fcntl.h>
 #include <fs_mgr.h>
 #include <fstab/fstab.h>
 #include <libdm/loop_control.h>
@@ -123,6 +126,8 @@ bool need_mount_cache = false;
 bool iso_file_attached = false;
 // The drive Ventoy booted from, once seen
 std::string ventoy_disk;
+// Loop devices attached to a partition holding a partition table, with the disk of that partition
+std::unordered_map<std::string, std::string> nested_table_disks;
 
 constexpr char kMountOptsRo[] = "";
 constexpr char kMountOptsRw[] = "discard";
@@ -1047,6 +1052,33 @@ void AddOverlayEntries(Fstab* fstab, const OverlayLowerdirs& lowerdirs) {
     }
 }
 
+// A partition with no filesystem that holds a partition table (a disk image written to it): its
+// partitions are found through a loop device, as devices of the same disk
+void AttachNestedPartitionTable(const std::string& devpath, const std::string& disk) {
+    uint32_t sector_size = PartitionTable::Find(devpath);
+    if (sector_size == 0) return;
+    bool read_only = false;
+    unique_fd fd(TEMP_FAILURE_RETRY(open(devpath.c_str(), O_RDWR | O_CLOEXEC)));
+    if (fd.get() == -1) {
+        read_only = true;
+        fd.reset(TEMP_FAILURE_RETRY(open(devpath.c_str(), O_RDONLY | O_CLOEXEC)));
+    }
+    if (fd.get() == -1) {
+        PLOG(ERROR) << "Cannot open " << devpath;
+        return;
+    }
+    std::string loop = LoopDevice::Attach(fd.get(), read_only, true, sector_size);
+    if (loop.empty()) return;
+    LOG(INFO) << "Block device " << devpath << " has a partition table, attached to " << loop;
+    nested_table_disks[fs::path(loop).filename()] = disk;
+}
+
+// The disk of the partition holding the table, for a partition found in one, otherwise ""
+std::string NestedTableDisk(const android::init::Uevent& uevent) {
+    auto it = nested_table_disks.find(fs::path(uevent.path).parent_path().filename());
+    return it == nested_table_disks.end() ? "" : it->second;
+}
+
 // Probes the device and records what it can be used for
 std::shared_ptr<BlockDeviceInfo> AddBlockDevice(BlockDeviceInfo info) {
     if (!ParseApfsBlockDevice(&info)) ParseBlockDevice(&info);
@@ -1076,9 +1108,10 @@ void OnBlockDeviceAdd(const android::init::Uevent& uevent, const std::string& de
         return;
     }
 
+    std::string nested_disk = NestedTableDisk(uevent);
     static const std::list<std::string> kIgnoredDevnamePrefixs = {"dm-", "loop", "ram", "zram"};
     for (const auto& prefix : kIgnoredDevnamePrefixs) {
-        if (StartsWith(uevent.device_name, prefix)) {
+        if (nested_disk.empty() && StartsWith(uevent.device_name, prefix)) {
             return;
         }
     }
@@ -1090,7 +1123,7 @@ void OnBlockDeviceAdd(const android::init::Uevent& uevent, const std::string& de
     info.partuuid = uevent.partition_uuid;
     // DEVPATH of a partition is .../block/<disk>/<partition>
     std::string parent = fs::path(uevent.path).parent_path().filename();
-    info.disk = parent == "block" ? info.devname : parent;
+    info.disk = !nested_disk.empty() ? nested_disk : parent == "block" ? info.devname : parent;
     info.links = links;
     info.is_partition = std::isdigit(static_cast<unsigned char>(info.devname.back()));
     // An ISO image booted as a file of this partition: a device of its own, like a CD. Ventoy
@@ -1101,6 +1134,10 @@ void OnBlockDeviceAdd(const android::init::Uevent& uevent, const std::string& de
     }
     auto bdinfo = AddBlockDevice(info);
     if (info.disk == info.devname && VentoyImage::IsOnDisk(devpath)) ventoy_disk = info.devname;
+    // Not inside another one
+    if (bdinfo->fs_type.empty() && info.is_partition && nested_disk.empty()) {
+        AttachNestedPartitionTable(devpath, info.disk);
+    }
 
     if (iso_file_attached) return;
     std::string iso_path = bdinfo->have_iso_file;

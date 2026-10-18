@@ -109,6 +109,24 @@ changes the initrd for its own `/init`, which `rdinit=` does not run. The
 live ISO asks for it with `VENTOY COMPATIBLE` in its publisher field
 (`device/mainline/generic/build/tasks/20-liveisoimage.mk`).
 
+### A partition table inside a partition
+
+A disk image written to a partition (not to a disk) has partitions the
+kernel does not see. A partition with no filesystem, but a GPT or MBR
+(`partition_table.cpp`), is attached to a loop device with partition
+scanning (`loop_device.cpp`), and the partitions it holds are probed like
+any other, as devices of the same disk as the partition they are in.
+
+- The GPT signature is looked for after the first 512 or 4096 bytes; that
+  sector size is given to the loop device. An MBR needs the `0x55AA`
+  signature and entries that fit in the device, and one that is not just
+  the protection of a GPT.
+- It is attached read-write, or read-only if it can not be opened so.
+- Not for a whole disk (the kernel scans it), and not inside what was
+  found this way: one level only.
+- `PARTNAME` of a GPT inside is passed on by the kernel, so `std_parts`
+  works with it.
+
 ### What is recognized
 
 | Found | How |

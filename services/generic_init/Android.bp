@@ -287,6 +287,8 @@ cc_binary {
         "first_stage_mount.cpp",
         "first_stage_mount_android.cpp",
         "iso_file.cpp",
+        "loop_device.cpp",
+        "partition_table.cpp",
         "ventoy_image.cpp",
     ],
 }
@@ -329,6 +331,8 @@ cc_defaults {
         "ueventd_parser.cpp",
         "util.cpp",
         "iso_file.cpp",
+        "loop_device.cpp",
+        "partition_table.cpp",
         "ventoy_image.cpp",
     ],
 

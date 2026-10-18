@@ -16,6 +16,7 @@
 
 #include "devices.h"
 #include "dynamic_mount_handler.h"
+#include "usb_gadget.h"
 
 #include <errno.h>
 #include <fnmatch.h>
@@ -783,6 +784,11 @@ void DeviceHandler::HandleBindInternal(std::string driver_name, std::string acti
 }
 
 void DeviceHandler::HandleUevent(const Uevent& uevent) {
+    // A UDC has no device node
+    if (uevent.subsystem == "udc" && uevent.action == "add") {
+        UsbGadget::OnUdcAdd(Basename(uevent.path));
+    }
+
     if (uevent.action == "add" || uevent.action == "change" || uevent.action == "bind" ||
         uevent.action == "online") {
         FixupSysPermissions(uevent.path, uevent.subsystem);

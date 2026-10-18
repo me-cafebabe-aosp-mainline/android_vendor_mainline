@@ -708,6 +708,15 @@ static BootMode GetBootMode() {
 static void SetUsbController(bool run_loop) {
     if (udc_controller_set) return;
 
+    // Tethered boot: the gadget is first stage's alone, so nothing follows the controller, not
+    // the USB HAL (hardware_detect) nor the USB actions of init scripts (sys.usb.configfs)
+    if (!GetProperty("ro.boot.usb_gadget", "").empty()) {
+        std::lock_guard<std::mutex> lock(udc_controller_lock);
+        udc_controller_set = true;
+        udc_detection_cv.notify_one();
+        return;
+    }
+
     do {
         std::unique_ptr<DIR, decltype(&closedir)> dir(opendir("/sys/class/udc"), closedir);
         if (!dir) return;

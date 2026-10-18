@@ -8,6 +8,7 @@
 #include "iso_file.h"
 #include "loop_device.h"
 #include "partition_table.h"
+#include "usb_gadget.h"
 #include "util.h"
 #include "ventoy_image.h"
 
@@ -1099,6 +1100,7 @@ void OnPreBlockDevices(void) {
     block_devices = std::make_shared<BlockDevices>();
     ParseConfig();
     VentoyImage::ReadParams();
+    UsbGadget::Init();
 }
 
 void OnBlockDeviceAdd(const android::init::Uevent& uevent, const std::string& devpath,

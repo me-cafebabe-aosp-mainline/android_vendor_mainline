@@ -289,6 +289,7 @@ cc_binary {
         "iso_file.cpp",
         "loop_device.cpp",
         "partition_table.cpp",
+        "usb_gadget.cpp",
         "ventoy_image.cpp",
     ],
 }
@@ -333,6 +334,7 @@ cc_defaults {
         "iso_file.cpp",
         "loop_device.cpp",
         "partition_table.cpp",
+        "usb_gadget.cpp",
         "ventoy_image.cpp",
     ],
 

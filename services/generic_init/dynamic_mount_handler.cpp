@@ -1242,14 +1242,6 @@ void OnPostBlockDevices(bool is_recovery_mode) {
     }
     AddFirmwareDirEntry(&fstab);
 
-    // Unmount the android dir when unused, so that live boot media can be ejected. Overlay dirs
-    // are used once mounted.
-    bool overlay_dirs_used =
-            param_mount_overlay == MountOverlayParam::DIRS && !overlay_lowerdirs.empty();
-    if (!is_recovery_mode && !overlay_dirs_used && umount(kAndroidMountTarget.c_str()) == 0) {
-        LOG(INFO) << "umount " << kAndroidMountTarget << " successfully";
-    }
-
     AddOverlayEntries(&fstab, overlay_lowerdirs);
     if (!is_recovery_mode) {
         for (auto& entry : addon_fstab) {
@@ -1264,6 +1256,13 @@ void OnPostBlockDevices(bool is_recovery_mode) {
 
     if (!DynamicMountHelpers::MountPartitions(fstab)) {
         LOG(FATAL) << "Failed to mount partitions";
+    }
+
+    // Unmount the android dir when unused, so that live boot media can be ejected. This is done
+    // after the mounts, as the bind mounts, overlays and addon fstab entries use paths below it.
+    // Loop devices of images keep it busy.
+    if (!is_recovery_mode && umount(kAndroidMountTarget.c_str()) == 0) {
+        LOG(INFO) << "umount " << kAndroidMountTarget << " successfully";
     }
 }
 

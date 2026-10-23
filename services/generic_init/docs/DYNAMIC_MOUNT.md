@@ -215,7 +215,6 @@ with system partitions too.
   added before the addon fstab entries, so that addon overlays of the
   same mount point go on top of it. Like them, it is mounted after
   `SwitchRoot()`.
-- With `dirs` the Android directory stays mounted.
 
 Limits:
 
@@ -245,9 +244,14 @@ images.
 
 ### Releasing the boot media
 
-After the fstab is generated, the Android directory mount is
-unmounted if nothing uses it. Live boot users can remove the media. Not
-with `mount_overlay=dirs`, whose directories are only used later.
+After `MountPartitions()`, the Android directory mount is unmounted if
+nothing uses it. Live boot users can remove the media. The unmount comes
+last because bind mounts, overlays and addon fstab entries take their
+sources from below it: addon fstab entries can use
+`/mnt/vendor/generic_init/android/...` as a source (the Debian package
+overlays the modules of the Debian kernel on `/vendor_dlkm/lib/modules`
+this way). The loop devices of images keep it busy, so it stays mounted
+then. It is not unmounted in recovery mode.
 
 ## Mounting
 

@@ -25,10 +25,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/utsname.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
 #include <chrono>
+#include <string>
 #include <thread>
 
 #include <android-base/chrono_utils.h>
@@ -217,6 +219,18 @@ void parallel_main_loop(const UeventListener& uevent_listener,
     });
 }
 
+// The modules of a kernel may be in a directory named after its release, like the Debian ones
+// (/lib/modules/6.12.73+deb13-amd64), as first stage module loading and modprobe_kernel allow.
+static std::string ModuleDirForRelease(const std::string& base_dir) {
+    utsname uts;
+    if (uname(&uts) == 0) {
+        std::string release_dir = base_dir + "/" + uts.release;
+        struct stat sb;
+        if (stat(release_dir.c_str(), &sb) == 0 && S_ISDIR(sb.st_mode)) return release_dir;
+    }
+    return base_dir;
+}
+
 int ueventd_main(int argc, char** argv) {
     android::base::InitLogging(argv, &android::base::KernelLogger);
     return ueventd_main(GetConfiguration(), false);
@@ -266,10 +280,10 @@ int ueventd_main(const UeventdConfiguration& ueventd_configuration, bool first_r
     if (ueventd_configuration.enable_modalias_handling) {
         std::vector<std::string> base_paths;
         if (first_run) {
-            base_paths.push_back("/lib/modules");
+            base_paths.push_back(ModuleDirForRelease("/lib/modules"));
         } else {
-            base_paths.push_back("/system/lib/modules");
-            base_paths.push_back("/vendor/lib/modules");
+            base_paths.push_back(ModuleDirForRelease("/system/lib/modules"));
+            base_paths.push_back(ModuleDirForRelease("/vendor/lib/modules"));
         }
         uevent_handlers.emplace_back(
                 std::make_shared<ModaliasHandler>(base_paths, modalias_handling_delay_ms));

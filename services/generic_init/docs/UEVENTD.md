@@ -66,7 +66,7 @@ change them.
 
 | Item | Detail |
 |------|--------|
-| Search paths | First run `/lib/modules`; second run `/system/lib/modules`, `/vendor/lib/modules` |
+| Search paths | First run `/lib/modules`; second run `/system/lib/modules`, `/vendor/lib/modules`. Each one is its `<uname -r>` subdirectory if there is one, as for first stage module loading (Debian kernels keep `modules.alias` and `modules.dep` there), otherwise the directory itself |
 | Delay | `androidboot.modalias_handling_delay_ms=N` sleeps N ms before each module load |
 | Use of the delay | Slow down loading to see which module crashes the boot |
 | Where it applies | The serial handler and the thread pool path both honor it |

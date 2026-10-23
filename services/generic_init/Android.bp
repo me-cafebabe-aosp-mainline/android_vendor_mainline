@@ -171,6 +171,7 @@ libgeneric_init_cc_defaults {
         "libbootloader_message",
         "liblmkd_utils",
         "liblz4",
+        "liblzma",
         "libmodprobe",
         "libprocinfo",
         "libprotobuf-cpp-lite",

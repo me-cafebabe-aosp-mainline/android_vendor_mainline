@@ -81,7 +81,8 @@ A boot is a recovery boot when `IsRecoveryMode()` is true and
 |------|----------|
 | Directory | A release specific `<uname -r><page size suffix>` directory wins, with no fallback. Otherwise matching `major.minor` directories, then the base directory |
 | List file | As in the table above |
-| Prefix list | `<list file>_prefix` (for example `modules.load_prefix`) lists name prefixes. Every `.ko` in the base directory whose name starts with a prefix is loaded, with its aliases |
+| Prefix list | `<list file>_prefix` (for example `modules.load_prefix`) lists name prefixes. Every `.ko` (or `.ko.zst`, `.ko.xz`, `.ko.gz`) in the base directory whose name starts with a prefix is loaded, with its aliases |
+| Compression | A module ending in `.gz`, `.xz` or `.zst` is loaded with `MODULE_INIT_COMPRESSED_FILE`, so the kernel (`CONFIG_MODULE_DECOMPRESS`) decompresses it. `modules.dep` and `modules.load` have to name the compressed files |
 | Parallel | `androidboot.load_modules_parallel` as in AOSP |
 | Timing | The time taken is exported in `kEnvInitModuleDurationMs` |
 

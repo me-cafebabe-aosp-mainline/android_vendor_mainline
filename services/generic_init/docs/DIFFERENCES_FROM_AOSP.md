@@ -23,13 +23,14 @@ renamed paths or reformatted. Tests and unused modules are removed.
 
 | File | Change | Why |
 |------|--------|-----|
-| `first_stage_init.cpp` | New dynamic mount path with two ueventd runs; module loading by prefix list and from `/vendor/lib/modules`; `ExecuteVendorInitProgram()`; module loading never fatal; `/dev/block` created; no `clearenv()`; stdio set to `/dev/null` only before `execv`; `use_first_stage_mount` flag | Replace the first stage mount. See [BOOT_FLOW.md](BOOT_FLOW.md) |
+| `first_stage_init.cpp` | New dynamic mount path with two ueventd runs; module loading by prefix list (compressed modules included) and from `/vendor/lib/modules`; `ExecuteVendorInitProgram()`; module loading never fatal; `/dev/block` created; no `clearenv()`; stdio set to `/dev/null` only before `execv`; `use_first_stage_mount` flag | Replace the first stage mount. See [BOOT_FLOW.md](BOOT_FLOW.md) |
 | `ueventd.cpp`, `ueventd.h` | `ueventd_main(config, first_run)`; exit conditions; 30 s cap; per-uevent log on second run; cold boot every time; `SIGCHLD` left alone; modalias paths per run; delay parameter | Run ueventd inside first stage. See [UEVENTD.md](UEVENTD.md) |
 | `ueventd_parser.h` | Modalias handling on by default; 16 MiB uevent socket buffer | Needed without a `.rc` that enables them |
 | `uevent_listener.{h,cpp}` | `Poll()` can restart its timeout on every uevent | The 5 s quiet rule |
 | `coldboot.cpp`, `coldboot_runner.h` | Always use `ColdbootRunnerNoParallel` | `DynamicMountHandler` is not thread safe |
 | `devices.{h,cpp}` | `HandleDevice()` takes the `Uevent`; block `add` calls `OnBlockDeviceAdd()`; missing SELinux label no longer skips the node; `mknod` on an existing node always fixes the mode | Feed the mount handler, and work before policy is loaded |
-| `firmware_handler.cpp` | Removed the wait for `/dev/.booting` and the wait for `apexd` | Neither exists at this stage |
+| `firmware_handler.cpp` | Removed the wait for `/dev/.booting` and the wait for `apexd`; `.zst` and `.xz` firmware is decompressed and `liblzma` is linked | Neither exists at this stage; the kernel does not decompress the sysfs fallback |
+| `builtins.cpp` | `insmod` passes `MODULE_INIT_COMPRESSED_FILE` for `.gz`, `.xz` and `.zst` modules | Compressed kernel modules |
 | `modalias_handler.{h,cpp}` | Optional delay before each module load | Find the module that crashes the boot |
 | `util.cpp` | `TranslatePropName()`: `ro.board.platform`, `ro.hardware` and `ro.boot.*` read from boot parameters in `ExpandProps()`; `reboot_utils.h` always included; `HAVE_LIBUNWIND` guard | `.rc` expansion before properties exist |
 | `reboot_utils.cpp` | `androidboot.init_fatal_pause`; `HAVE_LIBUNWIND` guard around the unwinder | Keep a crash readable; build without libunwind |

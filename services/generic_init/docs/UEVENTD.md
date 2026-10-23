@@ -84,6 +84,11 @@ A firmware request is tried once against the directories in the
 ueventd config (`firmware_directories`). If nothing matches, the error
 is logged and the load fails. The kernel module that asked has to cope.
 
+In each directory the file is tried as is, then with `.zst` and `.xz`
+added, as the kernel does. The kernel does not decompress what the sysfs
+fallback receives, so ueventd decompresses these two itself and streams
+the result to the `data` node.
+
 Firmware directories come from the config of each run, so the second
 run can use directories that only exist after mounting
 (`/vendor/firmware`, `/mnt/vendor/firmware`, ...).

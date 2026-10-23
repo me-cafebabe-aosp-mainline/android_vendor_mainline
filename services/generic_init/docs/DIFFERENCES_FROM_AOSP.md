@@ -32,6 +32,7 @@ renamed paths or reformatted. Tests and unused modules are removed.
 | `firmware_handler.cpp` | Removed the wait for `/dev/.booting` and the wait for `apexd`; `.zst` and `.xz` firmware is decompressed and `liblzma` is linked | Neither exists at this stage; the kernel does not decompress the sysfs fallback |
 | `builtins.cpp` | `insmod` passes `MODULE_INIT_COMPRESSED_FILE` for `.gz`, `.xz` and `.zst` modules | Compressed kernel modules |
 | `modalias_handler.{h,cpp}` | Optional delay before each module load | Find the module that crashes the boot |
+| `util.h` | `IsCompressedKernelModule()` and a guarded `MODULE_INIT_COMPRESSED_FILE` | `insmod` and the first stage prefix list build without the compressed module support of `libmodprobe` |
 | `util.cpp` | `TranslatePropName()`: `ro.board.platform`, `ro.hardware` and `ro.boot.*` read from boot parameters in `ExpandProps()`; `reboot_utils.h` always included; `HAVE_LIBUNWIND` guard | `.rc` expansion before properties exist |
 | `reboot_utils.cpp` | `androidboot.init_fatal_pause`; `HAVE_LIBUNWIND` guard around the unwinder | Keep a crash readable; build without libunwind |
 | `first_stage_console.{h,cpp}` | Mode 3 (`START_VENDOR_SH_BOOTSTRAP`) and a program argument; `setsid()` and `TIOCSCTTY` checked; waits for its child with `waitpid()` | Console from `/vendor/bin/bootstrap/sh`; fixes in the console code |

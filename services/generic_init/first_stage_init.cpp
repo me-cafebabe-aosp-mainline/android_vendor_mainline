@@ -42,7 +42,6 @@
 #include <android/avf_cc_flags.h>
 #include <fs_mgr.h>
 #include <modprobe/modprobe.h>
-#include <modprobe/utils.h>
 #include <private/android_filesystem_config.h>
 
 #include "debug_ramdisk.h"
@@ -222,7 +221,7 @@ std::vector<std::string> GetModulesToLoad(const std::string& module_base_dir,
         std::string filename = entry.path().filename();
         // Compressed modules are named foo.ko.zst, foo.ko.xz or foo.ko.gz
         std::string module_name = filename;
-        if (modprobe::IsCompressedModule(module_name)) {
+        if (IsCompressedKernelModule(module_name)) {
             module_name.resize(module_name.rfind('.'));
         }
         if (!android::base::EndsWith(module_name, ".ko")) continue;

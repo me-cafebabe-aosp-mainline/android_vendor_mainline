@@ -25,6 +25,7 @@
 #include <vector>
 
 #include <android-base/chrono_utils.h>
+#include <android-base/strings.h>
 
 #include "fscrypt_init_extensions.h"
 #include "result.h"
@@ -57,6 +58,20 @@ Result<std::string> ReadFile(const std::string& path);
 Result<void> WriteFile(const std::string& path, const std::string& content);
 
 Result<uid_t> DecodeUid(const std::string& name);
+
+// Not taken from libmodprobe, so this builds with a system/core that lacks its compressed module
+// support (which is still needed to load them from modules.load).
+#ifndef MODULE_INIT_COMPRESSED_FILE
+#define MODULE_INIT_COMPRESSED_FILE 4
+#endif
+
+// Modules the kernel can decompress (CONFIG_MODULE_DECOMPRESS) are named foo.ko.{gz,xz,zst}.
+inline bool IsCompressedKernelModule(const std::string& path) {
+    for (const char* suffix : {".gz", ".xz", ".zst"}) {
+        if (android::base::EndsWith(path, suffix)) return true;
+    }
+    return false;
+}
 
 bool mkdir_recursive(const std::string& pathname, mode_t mode);
 int wait_for_file(const char* filename, std::chrono::nanoseconds timeout);

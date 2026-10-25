@@ -186,6 +186,24 @@ from the disk of the Android directory. Without an Android directory,
 the later uevent wins. A device with a `PARTNAME` ending in `_overlay` (of a system
 partition) is never used for anything else, even with a `build.prop`.
 
+## Growing the android dir device
+
+With `mount_userdata=imgs` or `bind_mount_dir`, user data lives on the
+device of the Android directory, which is often an image written to a
+bigger partition, so the filesystem is shorter than the device. Before
+`MountAndroidDir()`, while the device is not mounted, `resize_fs.cpp` reads
+the size of the filesystem from its superblock, and if the device is bigger
+by 64 MiB or more:
+
+- `ext4`: `e2fsck -f -y`, then `resize2fs <device>`.
+- `f2fs`: `resize.f2fs <device>`.
+
+The tools are run from `/system/bin` of the ramdisk, like the first stage
+console runs a program (`posix_spawn()`, no environment), and what they
+print goes to the log. They are not built by `generic_init`: the device
+tree puts them in the ramdisk. A missing tool, or a failure, is logged
+and the boot goes on. Not in recovery mode, and not for a read-only device.
+
 ## At shutdown
 
 The android dir is mounted for the whole run, since images mounted from it

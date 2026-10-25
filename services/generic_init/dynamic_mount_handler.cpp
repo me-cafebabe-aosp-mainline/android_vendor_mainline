@@ -8,6 +8,7 @@
 #include "iso_file.h"
 #include "loop_device.h"
 #include "partition_table.h"
+#include "resize_fs.h"
 #include "usb_gadget.h"
 #include "util.h"
 #include "ventoy_image.h"
@@ -1312,6 +1313,14 @@ bool CanQuitUeventd(bool print_log) {
 void OnPostBlockDevices(bool is_recovery_mode) {
     Fstab fstab;
     OverlayLowerdirs overlay_lowerdirs;
+    // User data in the android dir: the device was written as an image, and may be bigger. It is
+    // not mounted here yet, which resizing needs.
+    const auto& android_dev = block_device_for_android_dir;
+    if (!is_recovery_mode && need_android_dir && android_dev != nullptr && android_dev->rw &&
+        (param_mount_userdata == MountUserdataParam::IMAGES ||
+         param_mount_userdata == MountUserdataParam::BIND_MOUNT_DIR)) {
+        ResizeFs::GrowToDevice(android_dev->devpath, android_dev->fs_type);
+    }
     std::string android_dir_path = need_android_dir ? MountAndroidDir() : "";
 
     // Recovery mode only mounts the firmware

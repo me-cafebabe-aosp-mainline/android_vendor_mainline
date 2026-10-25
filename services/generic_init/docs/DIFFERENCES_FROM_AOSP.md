@@ -15,6 +15,7 @@ renamed paths or reformatted. Tests and unused modules are removed.
 | `dynamic_mount_helpers.{h,cpp}` | Mounts the fstab: system-as-root switch, overlayfs |
 | `iso_file.{h,cpp}`, `ventoy_image.{h,cpp}` | Finds an ISO booted as a file and attaches it to a loop device. See [DYNAMIC_MOUNT.md](DYNAMIC_MOUNT.md) |
 | `loop_device.{h,cpp}`, `partition_table.{h,cpp}` | Attaches loop devices without waiting for ueventd, and finds the partitions of a partition table put on a partition. See [DYNAMIC_MOUNT.md](DYNAMIC_MOUNT.md) |
+| `resize_fs.{h,cpp}` | Grows the filesystem of the android dir device to fill it, with `resize2fs` or `resize.f2fs`, when user data is kept there. See [DYNAMIC_MOUNT.md](DYNAMIC_MOUNT.md) |
 | `usb_gadget.{h,cpp}` | Makes the USB gadget of tethered boot in first stage, and `init.cpp` leaves the USB controller to it. See [USB_GADGET.md](USB_GADGET.md) |
 | `coldboot_runner_noparallel.cpp` | Cold boot handled one uevent at a time |
 | `docs/` | These documents |

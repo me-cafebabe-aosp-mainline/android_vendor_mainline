@@ -30,6 +30,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstring>
 #include <filesystem>
 #include <list>
 #include <map>
@@ -510,6 +511,32 @@ std::string ReadFsUuid(const std::string& devpath, const std::string& fs_type) {
     return "";
 }
 
+// The filesystem of a device by its superblock, for the filesystems ReadFsUuid() reads the UUID
+// of: no mount needed. "" for any other, and for no filesystem.
+std::string DetectFsType(const std::string& devpath) {
+    unique_fd fd(TEMP_FAILURE_RETRY(open(devpath.c_str(), O_RDONLY | O_CLOEXEC)));
+    if (fd.get() == -1) return "";
+    uint8_t boot[512], super[64];
+    if (TEMP_FAILURE_RETRY(pread(fd.get(), boot, sizeof(boot), 0)) !=
+                static_cast<ssize_t>(sizeof(boot)) ||
+        TEMP_FAILURE_RETRY(pread(fd.get(), super, sizeof(super), 1024)) !=
+                static_cast<ssize_t>(sizeof(super))) {
+        return "";
+    }
+    static const uint8_t kF2fsMagic[] = {0x10, 0x20, 0xf5, 0xf2};
+    static const uint8_t kErofsMagic[] = {0xe2, 0xe1, 0xf5, 0xe0};
+    if (super[0x38] == 0x53 && super[0x39] == 0xef) return "ext4";
+    if (memcmp(super, kF2fsMagic, sizeof(kF2fsMagic)) == 0) return "f2fs";
+    if (memcmp(super, kErofsMagic, sizeof(kErofsMagic)) == 0) return "erofs";
+    if (memcmp(boot + 3, "NTFS    ", 8) == 0) return "ntfs";
+    if (memcmp(boot + 3, "EXFAT   ", 8) == 0) return "exfat";
+    if (boot[510] == 0x55 && boot[511] == 0xaa &&
+        (memcmp(boot + 0x52, "FAT32   ", 8) == 0 || memcmp(boot + 0x36, "FAT", 3) == 0)) {
+        return "vfat";
+    }
+    return "";
+}
+
 // The size of a block device in bytes, from the sysfs directory of its uevent path, 0 if unknown
 uint64_t BlockDeviceBytes(const std::string& uevent_path) {
     std::string sectors;
@@ -528,6 +555,19 @@ bool IsAndroidDirDev(const BlockDeviceInfo& info) {
     if (config_android_dir_dev_key == "PARTUUID") return EqualsIgnoreCase(info.partuuid, value);
     if (config_android_dir_dev_key == "PARTLABEL") return info.partname == value;
     return true;
+}
+
+// Whether the android dir is all that is needed from the block devices: every part comes from it,
+// or is not mounted. Then the devices that are not the one of androidboot.android_dir_dev need no
+// probe. Not with an ISO image booted as a file, which is searched for on every filesystem.
+bool NeedsOnlyAndroidDir() {
+    return !config_android_dir_dev_key.empty() && need_android_dir &&
+           config_android_iso_uuid.empty() && VentoyImage::Path().empty() &&
+           (param_mount_system == MountSystemParam::IMAGES ||
+            param_mount_system == MountSystemParam::IMAGES_COPY_TO_RAM) &&
+           param_mount_userdata != MountUserdataParam::STANDARD_PARTITIONS_WITH_PARTNAME &&
+           param_mount_overlay != MountOverlayParam::STANDARD_PARTITIONS_WITH_PARTNAME &&
+           param_mount_firmware != MountFirmwareParam::ALL_POSSIBLE_DIRS;
 }
 
 ImageType GetImageTypeFromFilename(const std::string& filename) {
@@ -1147,14 +1187,33 @@ void OnBlockDeviceAdd(const android::init::Uevent& uevent, const std::string& de
     info.links = links;
     // Not by the name: a disk can end with a digit (mmcblk0, nvme0n1, usbblk0)
     info.is_partition = info.disk != info.devname;
-    // Only blk_devices needs the contents to tell a small system partition (dlkm) from the rest:
-    // the other modes find them by name
+    // Probing mounts the device. Not for one too small to hold a system (blk_devices needs the
+    // contents to tell a small partition, system_dlkm, from the rest: the other modes find those
+    // by name), and not for one that cannot be the android dir when that is all that is needed.
     uint64_t bytes = BlockDeviceBytes(uevent.path);
-    if (param_mount_system != MountSystemParam::ANY_BLOCK_DEVICES_AS_PARTITION && bytes != 0 &&
-        bytes < kMinProbeBytes) {
+    bool small = param_mount_system != MountSystemParam::ANY_BLOCK_DEVICES_AS_PARTITION &&
+                 bytes != 0 && bytes < kMinProbeBytes;
+    bool android_dir_only = nested_disk.empty() && NeedsOnlyAndroidDir();
+    bool target = false;
+    if (!config_android_dir_dev_key.empty() && (small || android_dir_only)) {
+        // The UUID of the filesystem is in its superblock
+        if (config_android_dir_dev_key == "UUID") {
+            info.fs_uuid = ReadFsUuid(devpath, DetectFsType(devpath));
+        }
+        target = IsAndroidDirDev(info);
+    }
+    // A partition table inside is looked for in what has no filesystem
+    bool look_for_table = true;
+    if (!target && small) {
         info.skip_probe = true;
+        look_for_table = false;
         LOG(INFO) << "Not probing block device " << devpath << ": only "
                   << StringPrintf("%.1f", bytes / 1048576.0) << " MiB";
+    } else if (!target && android_dir_only) {
+        info.skip_probe = true;
+        look_for_table = DetectFsType(devpath).empty();
+        LOG(INFO) << "Not probing block device " << devpath << ": not "
+                  << config_android_dir_dev_key << "=" << config_android_dir_dev_value;
     }
     // An ISO image booted as a file of this partition: a device of its own, like a CD. Ventoy
     // tells which under UEFI (a partition comes after its disk), otherwise its UUID is searched.
@@ -1165,7 +1224,7 @@ void OnBlockDeviceAdd(const android::init::Uevent& uevent, const std::string& de
     auto bdinfo = AddBlockDevice(info);
     if (info.disk == info.devname && VentoyImage::IsOnDisk(devpath)) ventoy_disk = info.devname;
     // Not inside another one
-    if (bdinfo->fs_type.empty() && info.is_partition && nested_disk.empty() && !info.skip_probe) {
+    if (bdinfo->fs_type.empty() && info.is_partition && nested_disk.empty() && look_for_table) {
         AttachNestedPartitionTable(devpath, info.disk);
     }
 

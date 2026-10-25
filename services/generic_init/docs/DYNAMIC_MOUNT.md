@@ -42,7 +42,7 @@ bootconfig. Unset means the default.
 | `androidboot.mount_overlay` | `disable` | `disable`, `std_parts`, `imgs`, `imgs_ram`, `dirs` |
 | `androidboot.mount_firmware` | `all_possible_dirs` | `all_possible_dirs` (or `true`), `disable` (or `false`), `only_android_dir`, `img`, `img_ram` |
 | `androidboot.android_dir` | none | Name of the Android directory; unset: `android` or `boot/android` |
-| `androidboot.android_dir_dev` | none | The only device for the Android directory: `UUID=` (filesystem), `PARTUUID=` or `PARTLABEL=` (partition) |
+| `androidboot.android_dir_dev` | none | The only device for the Android directory: `UUID=` (filesystem), `PARTUUID=` or `PARTLABEL=` (partition). When nothing else is needed from block devices, no other device is probed (see below) |
 | `androidboot.addon_fstab_suffix` | none | Comma separated suffixes |
 
 An invalid value is logged and the default stays.
@@ -69,6 +69,18 @@ Android system or installation. Mounting those only fills the log. With
 `mount_system=blk_devices` they are probed, as the contents tell what a
 small partition (`system_dlkm`) is; the other modes find those by name,
 which needs no probing.
+
+With `androidboot.android_dir_dev`, when nothing else is needed from block
+devices, a device that is not the named one is not probed either (and
+a small one that is, is). That is: `mount_system` is `imgs` or
+`imgs_ram`, `mount_userdata` and `mount_overlay` are not `std_parts`,
+`mount_firmware` is not `all_possible_dirs`, and there is no
+`androidboot.android_iso_uuid` or Ventoy image, which are searched for on
+every filesystem. `PARTLABEL` and `PARTUUID` are in the uevent; for
+`UUID`, the superblock is read without mounting (`ext4`, `f2fs`, `erofs`,
+`vfat`, `exfat`, `ntfs`), so a filesystem of another kind is never the
+device. A device with no known filesystem is still checked for a
+partition table inside, and the partitions found are probed.
 
 The probe:
 

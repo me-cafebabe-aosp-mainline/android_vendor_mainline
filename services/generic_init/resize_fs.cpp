@@ -30,6 +30,7 @@ namespace {
 constexpr char kE2fsck[] = "/system/bin/e2fsck";
 constexpr char kResize2fs[] = "/system/bin/resize2fs";
 constexpr char kResizeF2fs[] = "/system/bin/resize.f2fs";
+constexpr char kFsckF2fs[] = "/system/bin/fsck.f2fs";
 
 // A filesystem that is shorter than the device by less is not worth a check and a resize
 constexpr uint64_t kMinGainBytes = 64ull << 20;
@@ -69,8 +70,9 @@ uint64_t FilesystemBytes(int fd, const std::string& fs_type) {
 }
 
 // Runs the program like the first stage console does (posix_spawn() with no environment), logs
-// what it prints, returns its exit status or -1
-int Run(const std::vector<std::string>& args) {
+// what it prints, returns its exit status or -1. args[0] is the name it is run as, which is not the
+// file for the tools of f2fs-tools.
+int Run(const std::string& path, const std::vector<std::string>& args) {
     // We need to wait for our child, so don't use SA_NOCLDWAIT
     struct sigaction chld_act{};
     chld_act.sa_handler = SIG_DFL;
@@ -93,12 +95,12 @@ int Run(const std::vector<std::string>& args) {
     argv.push_back(nullptr);
     const char* envp[] = {nullptr};
     pid_t pid;
-    int rc = posix_spawn(&pid, argv[0], &actions, nullptr, argv.data(),
+    int rc = posix_spawn(&pid, path.c_str(), &actions, nullptr, argv.data(),
                          const_cast<char* const*>(envp));
     posix_spawn_file_actions_destroy(&actions);
     if (rc != 0) {
         errno = rc;
-        PLOG(ERROR) << "Failed to spawn '" << args[0] << "'";
+        PLOG(ERROR) << "Failed to spawn '" << path << "'";
         return -1;
     }
     write_end.reset();
@@ -114,7 +116,7 @@ int Run(const std::vector<std::string>& args) {
         if (c == '\r') c = '\n';
     }
     for (const auto& line : android::base::Split(output, "\n")) {
-        if (!android::base::Trim(line).empty()) LOG(INFO) << args[0] << ": " << line;
+        if (!android::base::Trim(line).empty()) LOG(INFO) << path << ": " << line;
     }
 
     int status;
@@ -149,20 +151,24 @@ void GrowToDevice(const std::string& devpath, const std::string& fs_type) {
             }
         }
         // resize2fs wants a filesystem that was just checked. 0 and 1: no errors, or corrected.
-        int status = Run({kE2fsck, "-f", "-y", devpath});
+        int status = Run(kE2fsck, {kE2fsck, "-f", "-y", devpath});
         if (status != 0 && status != 1) {
             LOG(ERROR) << "e2fsck of " << devpath << " failed with " << status
                        << ", not growing it";
             return;
         }
-        status = Run({kResize2fs, devpath});
+        status = Run(kResize2fs, {kResize2fs, devpath});
         if (status != 0) LOG(ERROR) << "resize2fs of " << devpath << " failed with " << status;
     } else {
-        if (access(kResizeF2fs, X_OK) != 0) {
+        // The ramdisk build of f2fs-tools has no resize.f2fs link: fsck.f2fs is resize.f2fs by the
+        // name it is run as
+        std::string tool = kResizeF2fs;
+        if (access(tool.c_str(), X_OK) != 0) tool = kFsckF2fs;
+        if (access(tool.c_str(), X_OK) != 0) {
             LOG(WARNING) << kResizeF2fs << " not found, not growing " << devpath;
             return;
         }
-        int status = Run({kResizeF2fs, devpath});
+        int status = Run(tool, {"resize.f2fs", devpath});
         if (status != 0) LOG(ERROR) << "resize.f2fs of " << devpath << " failed with " << status;
     }
 }

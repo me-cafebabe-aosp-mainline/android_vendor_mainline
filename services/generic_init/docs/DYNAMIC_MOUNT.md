@@ -196,7 +196,10 @@ the size of the filesystem from its superblock, and if the device is bigger
 by 64 MiB or more:
 
 - `ext4`: `e2fsck -f -y`, then `resize2fs <device>`.
-- `f2fs`: `resize.f2fs <device>`.
+- `f2fs`: `resize.f2fs <device>`. The ramdisk build of f2fs-tools
+  (`fsck.f2fs_ramdisk`) installs only `fsck.f2fs`, which is `resize.f2fs` by
+  the name it is run as (`argv[0]`): it is run like that when there is no
+  `resize.f2fs`.
 
 The tools are run from `/system/bin` of the ramdisk, like the first stage
 console runs a program (`posix_spawn()`, no environment), and what they

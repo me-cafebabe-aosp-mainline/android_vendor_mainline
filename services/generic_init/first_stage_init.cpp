@@ -43,6 +43,7 @@
 #include <fs_mgr.h>
 #include <modprobe/modprobe.h>
 #include <private/android_filesystem_config.h>
+#include <selinux/selinux.h>
 
 #include "debug_ramdisk.h"
 #include "dynamic_mount_handler.h"
@@ -573,6 +574,8 @@ int FirstStageMain(int argc, char** argv) {
         // setenv for second-stage init to read above kDebugRamdisk* files.
         setenv("INIT_FORCE_DEBUGGABLE", "true", 1);
     }
+
+    security_setenforce(0);
 
     if (use_first_stage_mount) {
         if (ForceNormalBoot(cmdline, bootconfig)) {

@@ -62,7 +62,15 @@ What each parameter makes the handler wait for:
 ## Probing a block device
 
 For every `add` uevent of a block device, except names starting with
-`dm-`, `loop`, `ram` or `zram`:
+`dm-`, `loop`, `ram` or `zram`, and except devices smaller than 100 MiB
+(read from sysfs), which only have their uevent fields recorded: a
+bootloader or settings partition, the boot partitions of an eMMC, no
+Android system or installation. Mounting those only fills the log. With
+`mount_system=blk_devices` they are probed, as the contents tell what a
+small partition (`system_dlkm`) is; the other modes find those by name,
+which needs no probing.
+
+The probe:
 
 1. Try APFS first: volumes 0 to 19 with `vol=N`. A volume counts only if
    it holds an Android directory.

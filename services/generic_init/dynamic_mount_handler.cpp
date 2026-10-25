@@ -15,6 +15,7 @@
 #include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/macros.h>
+#include <android-base/parseint.h>
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 #include <android-base/unique_fd.h>
@@ -100,6 +101,8 @@ struct BlockDeviceInfo {
 
     // our fields
     bool is_partition;
+    // Not worth mounting: the device is only known by its uevent fields
+    bool skip_probe = false;
     bool rw;
     std::string fs_type;
     std::string fs_uuid;
@@ -269,6 +272,10 @@ const std::string kFirmwareMountTarget = "/mnt/vendor/generic_init/firmware";
 const std::string kOverlayMountTarget = "/mnt/vendor/generic_init/overlay";
 const std::string kTmpfsImgDir = "/mnt/vendor/generic_init/img";
 const std::string kTryMountTarget = "/mnt/vendor/generic_init/try";
+// Block devices smaller than this are not probed: a bootloader, a partition table, settings, but
+// no Android system or installation
+constexpr uint64_t kMinProbeBytes = 100ull << 20;
+
 const std::string kImageSuffix = ".img";
 const std::string kOverlaySuffix = "_overlay";
 
@@ -501,6 +508,17 @@ std::string ReadFsUuid(const std::string& devpath, const std::string& fs_type) {
                             buf[3], buf[2], buf[1], buf[0]);
     }
     return "";
+}
+
+// The size of a block device in bytes, from the sysfs directory of its uevent path, 0 if unknown
+uint64_t BlockDeviceBytes(const std::string& uevent_path) {
+    std::string sectors;
+    uint64_t count;
+    if (!ReadFileToString("/sys" + uevent_path + "/size", &sectors) ||
+        !android::base::ParseUint(android::base::Trim(sectors), &count)) {
+        return 0;
+    }
+    return count * 512;
 }
 
 // Whether the device may hold the android dir: the one of androidboot.android_dir_dev, if set
@@ -1082,7 +1100,7 @@ std::string NestedTableDisk(const android::init::Uevent& uevent) {
 
 // Probes the device and records what it can be used for
 std::shared_ptr<BlockDeviceInfo> AddBlockDevice(BlockDeviceInfo info) {
-    if (!ParseApfsBlockDevice(&info)) ParseBlockDevice(&info);
+    if (!info.skip_probe && !ParseApfsBlockDevice(&info)) ParseBlockDevice(&info);
     auto bdinfo = std::make_shared<BlockDeviceInfo>(std::move(info));
     block_devices->insert({bdinfo->devpath, bdinfo});
     UpdateMountInfo(bdinfo);
@@ -1129,6 +1147,15 @@ void OnBlockDeviceAdd(const android::init::Uevent& uevent, const std::string& de
     info.links = links;
     // Not by the name: a disk can end with a digit (mmcblk0, nvme0n1, usbblk0)
     info.is_partition = info.disk != info.devname;
+    // Only blk_devices needs the contents to tell a small system partition (dlkm) from the rest:
+    // the other modes find them by name
+    uint64_t bytes = BlockDeviceBytes(uevent.path);
+    if (param_mount_system != MountSystemParam::ANY_BLOCK_DEVICES_AS_PARTITION && bytes != 0 &&
+        bytes < kMinProbeBytes) {
+        info.skip_probe = true;
+        LOG(INFO) << "Not probing block device " << devpath << ": only "
+                  << StringPrintf("%.1f", bytes / 1048576.0) << " MiB";
+    }
     // An ISO image booted as a file of this partition: a device of its own, like a CD. Ventoy
     // tells which under UEFI (a partition comes after its disk), otherwise its UUID is searched.
     if (!iso_file_attached && !ventoy_disk.empty() && info.disk == ventoy_disk &&
@@ -1138,7 +1165,7 @@ void OnBlockDeviceAdd(const android::init::Uevent& uevent, const std::string& de
     auto bdinfo = AddBlockDevice(info);
     if (info.disk == info.devname && VentoyImage::IsOnDisk(devpath)) ventoy_disk = info.devname;
     // Not inside another one
-    if (bdinfo->fs_type.empty() && info.is_partition && nested_disk.empty()) {
+    if (bdinfo->fs_type.empty() && info.is_partition && nested_disk.empty() && !info.skip_probe) {
         AttachNestedPartitionTable(devpath, info.disk);
     }
 

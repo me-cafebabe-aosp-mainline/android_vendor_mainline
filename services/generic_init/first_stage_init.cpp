@@ -432,6 +432,10 @@ int FirstStageMain(int argc, char** argv) {
     CHECKCALL(setgroups(arraysize(groups), groups));
     CHECKCALL(mount("sysfs", "/sys", "sysfs", 0, NULL));
     CHECKCALL(mount("selinuxfs", "/sys/fs/selinux", "selinuxfs", 0, NULL));
+    // libselinux looks for selinuxfs when the process starts, before it is mounted here: without
+    // this, it takes SELinux for disabled, restorecon does nothing, and security_setenforce()
+    // fails
+    set_selinuxmnt("/sys/fs/selinux");
 
     CHECKCALL(mknod("/dev/kmsg", S_IFCHR | 0600, makedev(1, 11)));
 

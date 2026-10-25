@@ -23,7 +23,7 @@ renamed paths or reformatted. Tests and unused modules are removed.
 
 | File | Change | Why |
 |------|--------|-----|
-| `first_stage_init.cpp` | New dynamic mount path with two ueventd runs; module loading by prefix list (compressed modules included) and from `/vendor/lib/modules`; `ExecuteVendorInitProgram()`; module loading never fatal; `/dev/block` created; no `clearenv()`; stdio set to `/dev/null` only before `execv`; `use_first_stage_mount` flag | Replace the first stage mount. See [BOOT_FLOW.md](BOOT_FLOW.md) |
+| `first_stage_init.cpp` | New dynamic mount path with two ueventd runs; module loading by prefix list (compressed modules included) and from `/vendor/lib/modules`; `ExecuteVendorInitProgram()`; module loading never fatal; `/dev/block` created; no `clearenv()`; stdio set to `/dev/null` only before `execv`; `use_first_stage_mount` flag; `set_selinuxmnt()` after mounting selinuxfs, then `security_setenforce(0)` |  Replace the first stage mount. See [BOOT_FLOW.md](BOOT_FLOW.md) |
 | `ueventd.cpp`, `ueventd.h` | `ueventd_main(config, first_run)`; exit conditions; 30 s cap; per-uevent log on second run; cold boot every time; `SIGCHLD` left alone; modalias paths per run (the `<uname -r>` subdirectory if there is one); delay parameter | Run ueventd inside first stage. See [UEVENTD.md](UEVENTD.md) |
 | `ueventd_parser.h` | Modalias handling on by default; 16 MiB uevent socket buffer | Needed without a `.rc` that enables them |
 | `uevent_listener.{h,cpp}` | `Poll()` can restart its timeout on every uevent | The 5 s quiet rule |

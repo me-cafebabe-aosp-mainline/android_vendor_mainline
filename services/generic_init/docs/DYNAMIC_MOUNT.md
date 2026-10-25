@@ -199,14 +199,15 @@ the size of the filesystem from its superblock, and if the device is bigger
 by 64 MiB or more:
 
 - `ext4`: `e2fsck -f -y`, then `resize2fs <device>`.
-- `f2fs`: `resize.f2fs <device>`. The ramdisk build of f2fs-tools
+- `f2fs`: `resize.f2fs -F <device>` (`-F`: otherwise it asks for an answer
+  to "Do you want to continue?" and waits for it). The ramdisk build of f2fs-tools
   (`fsck.f2fs_ramdisk`) installs only `fsck.f2fs`, which is `resize.f2fs` by
   the name it is run as (`argv[0]`): it is run like that when there is no
   `resize.f2fs`.
 
 The tools are run from `/system/bin` of the ramdisk, like the first stage
-console runs a program (`posix_spawn()`, no environment), and what they
-print goes to the log. They are not built by `generic_init`: the device
+console runs a program (`posix_spawn()`, no environment), with `/dev/null` as
+stdin, and what they print goes to the log. They are not built by `generic_init`: the device
 tree puts them in the ramdisk. A missing tool, or a failure, is logged
 and the boot goes on. Not in recovery mode, and not for a read-only device.
 

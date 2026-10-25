@@ -88,6 +88,8 @@ int Run(const std::string& path, const std::vector<std::string>& args) {
 
     posix_spawn_file_actions_t actions;
     posix_spawn_file_actions_init(&actions);
+    // The tools must not wait for the console
+    posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0);
     posix_spawn_file_actions_adddup2(&actions, write_end.get(), STDOUT_FILENO);
     posix_spawn_file_actions_adddup2(&actions, write_end.get(), STDERR_FILENO);
     std::vector<char*> argv;
@@ -168,7 +170,9 @@ void GrowToDevice(const std::string& devpath, const std::string& fs_type) {
             LOG(WARNING) << kResizeF2fs << " not found, not growing " << devpath;
             return;
         }
-        int status = Run(tool, {"resize.f2fs", devpath});
+        // -F: without it, resize.f2fs asks "Do you want to continue? [y/n]" and waits for the
+        // answer
+        int status = Run(tool, {"resize.f2fs", "-F", devpath});
         if (status != 0) LOG(ERROR) << "resize.f2fs of " << devpath << " failed with " << status;
     }
 }

@@ -34,6 +34,7 @@ renamed paths or reformatted. Tests and unused modules are removed.
 | `modalias_handler.{h,cpp}` | Optional delay before each module load | Find the module that crashes the boot |
 | `util.h` | `IsCompressedKernelModule()` and a guarded `MODULE_INIT_COMPRESSED_FILE` | `insmod` and the first stage prefix list build without the compressed module support of `libmodprobe` |
 | `util.cpp` | `TranslatePropName()`: `ro.board.platform`, `ro.hardware` and `ro.boot.*` read from boot parameters in `ExpandProps()`; `reboot_utils.h` always included; `HAVE_LIBUNWIND` guard | `.rc` expansion before properties exist |
+| `reboot.cpp` | The firmware image (`/mnt/vendor/firmware`, a loop device) is unmounted and its loop device detached before the partitions are; the android dir mount (`/mnt/vendor/generic_init/android`) is not unmounted while loop devices of image files keep it busy | The android dir could never be unmounted: every shutdown waited 6 s, killed everything and dumped CPU backtraces. See [DYNAMIC_MOUNT.md](DYNAMIC_MOUNT.md) |
 | `reboot_utils.cpp` | `androidboot.init_fatal_pause`; `HAVE_LIBUNWIND` guard around the unwinder | Keep a crash readable; build without libunwind |
 | `first_stage_console.{h,cpp}` | Mode 3 (`START_VENDOR_SH_BOOTSTRAP`) and a program argument; `setsid()` and `TIOCSCTTY` checked; waits for its child with `waitpid()` | Console from `/vendor/bin/bootstrap/sh`; fixes in the console code |
 | `host_init_stubs.h` | Removed stubs for `SetFatalRebootTarget()` and `InitFatalReboot()` | They are real functions now |

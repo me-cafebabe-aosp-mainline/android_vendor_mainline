@@ -186,6 +186,18 @@ from the disk of the Android directory. Without an Android directory,
 the later uevent wins. A device with a `PARTNAME` ending in `_overlay` (of a system
 partition) is never used for anything else, even with a `build.prop`.
 
+## At shutdown
+
+The android dir is mounted for the whole run, since images mounted from it
+(`firmware.img`, `system.img`...) keep it busy, and `reboot.cpp` handles
+that: it unmounts the firmware image and detaches its loop device, which
+leaves the android dir free to be unmounted with the other partitions
+(`std_parts` with `mount_firmware=img`). With system or user data images
+the loop devices stay attached to the end, so it is not unmounted: the sync
+and remount of the last resort cover it. Without that, every shutdown
+retried the unmount for the whole timeout, then killed all processes
+and printed CPU backtraces.
+
 ## Generating the fstab
 
 `OnPostBlockDevices(is_recovery_mode)` builds the fstab in this order,

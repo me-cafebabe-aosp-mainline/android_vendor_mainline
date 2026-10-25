@@ -215,6 +215,57 @@ static std::string GetDataFsType() {
     return "";
 }
 
+// Mounts of generic_init: the android dir, and the firmware image from it, a read-only mount on a
+// loop device
+static constexpr char kAndroidDirMount[] = "/mnt/vendor/generic_init/android";
+static constexpr char kFirmwareMount[] = "/mnt/vendor/firmware";
+
+// Whether a loop device is backed by a file below the directory
+static bool HeldByLoopDevices(const std::string& dir) {
+    std::unique_ptr<DIR, int (*)(DIR*)> sys_block(opendir("/sys/block"), closedir);
+    if (sys_block == nullptr) return false;
+    while (dirent* entry = readdir(sys_block.get())) {
+        if (!android::base::StartsWith(entry->d_name, "loop")) continue;
+        std::string backing_file;
+        if (android::base::ReadFileToString(
+                    std::string("/sys/block/") + entry->d_name + "/loop/backing_file",
+                    &backing_file) &&
+            android::base::StartsWith(android::base::Trim(backing_file), dir + "/")) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// The firmware image keeps the filesystem of the android dir busy: its loop device stays attached
+// after the unmount. Unlike the system images, which are needed until the end, it can go.
+static void ReleaseFirmwareImage() {
+    std::string loop;
+    {
+        std::unique_ptr<std::FILE, int (*)(std::FILE*)> fp(setmntent("/proc/mounts", "re"),
+                                                           endmntent);
+        if (fp == nullptr) return;
+        while (mntent* mentry = getmntent(fp.get())) {
+            if (std::string(mentry->mnt_dir) == kFirmwareMount &&
+                android::base::StartsWith(mentry->mnt_fsname, "/dev/block/loop")) {
+                loop = mentry->mnt_fsname;
+            }
+        }
+    }
+    if (loop.empty()) return;
+    if (umount2(kFirmwareMount, 0) != 0) {
+        PLOG(WARNING) << "Cannot umount " << kFirmwareMount;
+        return;
+    }
+    LOG(INFO) << "Umounted " << loop << ":" << kFirmwareMount;
+    unique_fd fd(TEMP_FAILURE_RETRY(open(loop.c_str(), O_RDONLY | O_CLOEXEC)));
+    if (fd.ok() && ioctl(fd.get(), LOOP_CLR_FD, 0) == 0) {
+        LOG(INFO) << "Detached " << loop;
+    } else {
+        PLOG(WARNING) << "Cannot detach " << loop;
+    }
+}
+
 // Find all read+write block devices and emulated devices in /proc/mounts and add them to
 // the correpsponding list.
 static bool FindPartitionsToUmount(std::vector<MountEntry>* block_dev_partitions,
@@ -232,6 +283,10 @@ static bool FindPartitionsToUmount(std::vector<MountEntry>* block_dev_partitions
             // Do not umount them as shutdown critical services may rely on them.
             if (mount_dir != "/" && mount_dir != "/system" && mount_dir != "/vendor" &&
                 mount_dir != "/oem") {
+                // The images mounted from the android dir keep it busy until the end, so it
+                // would only fail for the whole timeout. The sync and the remount of the
+                // last resort take care of it.
+                if (mount_dir == kAndroidDirMount && HeldByLoopDevices(mount_dir)) continue;
                 block_dev_partitions->emplace(block_dev_partitions->begin(), *mentry);
             }
         } else if (MountEntry::IsEmulatedDevice(*mentry)) {
@@ -273,6 +328,8 @@ static void DumpUmountDebuggingInfo() {
 static UmountStat TryUmountPartitions(bool force) {
     std::vector<MountEntry> block_devices;
     std::vector<MountEntry> emulated_devices;
+
+    ReleaseFirmwareImage();
 
     // Find partitions to umount and store the mount entries in block_devices and emulated_devices
     if (!FindPartitionsToUmount(&block_devices, &emulated_devices)) {

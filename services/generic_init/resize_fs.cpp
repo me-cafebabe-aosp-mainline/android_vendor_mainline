@@ -12,6 +12,7 @@
 #include <linux/fs.h>
 #include <signal.h>
 #include <spawn.h>
+#include <stdlib.h>
 #include <sys/ioctl.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -69,9 +70,46 @@ uint64_t FilesystemBytes(int fd, const std::string& fs_type) {
     return 0;
 }
 
+// A pseudo terminal for what the tools print: they only flush it at the end when it is a pipe,
+// which would keep a long resize silent until it is done. Fails if devpts is not there.
+bool OpenPty(unique_fd* master, unique_fd* slave) {
+    master->reset(posix_openpt(O_RDWR | O_NOCTTY | O_CLOEXEC));
+    if (master->get() == -1 || grantpt(master->get()) != 0 || unlockpt(master->get()) != 0) {
+        return false;
+    }
+    char name[64];
+    if (ptsname_r(master->get(), name, sizeof(name)) != 0) return false;
+    slave->reset(TEMP_FAILURE_RETRY(open(name, O_RDWR | O_NOCTTY | O_CLOEXEC)));
+    return slave->get() != -1;
+}
+
+// Logs the output as it arrives, a line at a time. The tools update a progress line with carriage
+// returns, which end a line too; empty lines are not logged.
+void LogOutput(const std::string& program, int fd) {
+    std::string line;
+    auto flush = [&] {
+        if (!android::base::Trim(line).empty()) LOG(INFO) << program << ": " << line;
+        line.clear();
+    };
+    char buf[512];
+    // A pty reports the end as EIO
+    while (true) {
+        ssize_t n = TEMP_FAILURE_RETRY(read(fd, buf, sizeof(buf)));
+        if (n <= 0) break;
+        for (ssize_t i = 0; i < n; i++) {
+            if (buf[i] == '\n' || buf[i] == '\r') {
+                flush();
+            } else {
+                line.push_back(buf[i]);
+            }
+        }
+    }
+    flush();
+}
+
 // Runs the program like the first stage console does (posix_spawn() with no environment), logs
-// what it prints, returns its exit status or -1. args[0] is the name it is run as, which is not the
-// file for the tools of f2fs-tools.
+// what it prints as it prints it, returns its exit status or -1. args[0] is the name it is run as,
+// which is not the file for the tools of f2fs-tools.
 int Run(const std::string& path, const std::vector<std::string>& args) {
     // We need to wait for our child, so don't use SA_NOCLDWAIT
     struct sigaction chld_act{};
@@ -79,12 +117,17 @@ int Run(const std::string& path, const std::vector<std::string>& args) {
     sigemptyset(&chld_act.sa_mask);
     sigaction(SIGCHLD, &chld_act, nullptr);
 
-    int fds[2];
-    if (pipe2(fds, O_CLOEXEC) != 0) {
-        PLOG(ERROR) << "pipe2() failed";
-        return -1;
+    unique_fd read_end, write_end;
+    if (!OpenPty(&read_end, &write_end)) {
+        LOG(WARNING) << "No pseudo terminal, the output of " << path << " comes at the end";
+        int fds[2];
+        if (pipe2(fds, O_CLOEXEC) != 0) {
+            PLOG(ERROR) << "pipe2() failed";
+            return -1;
+        }
+        read_end.reset(fds[0]);
+        write_end.reset(fds[1]);
     }
-    unique_fd read_end(fds[0]), write_end(fds[1]);
 
     posix_spawn_file_actions_t actions;
     posix_spawn_file_actions_init(&actions);
@@ -105,21 +148,10 @@ int Run(const std::string& path, const std::vector<std::string>& args) {
         PLOG(ERROR) << "Failed to spawn '" << path << "'";
         return -1;
     }
+    // Only the child holds the write end now, so that the end of its output is seen
     write_end.reset();
 
-    std::string output;
-    char buf[512];
-    ssize_t n;
-    while ((n = TEMP_FAILURE_RETRY(read(read_end.get(), buf, sizeof(buf)))) > 0) {
-        output.append(buf, n);
-    }
-    // The tools update a progress line with carriage returns
-    for (auto& c : output) {
-        if (c == '\r') c = '\n';
-    }
-    for (const auto& line : android::base::Split(output, "\n")) {
-        if (!android::base::Trim(line).empty()) LOG(INFO) << path << ": " << line;
-    }
+    LogOutput(path, read_end.get());
 
     int status;
     while (waitpid(pid, &status, 0) < 0) {

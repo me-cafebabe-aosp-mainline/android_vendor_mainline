@@ -207,7 +207,12 @@ by 64 MiB or more:
 
 The tools are run from `/system/bin` of the ramdisk, like the first stage
 console runs a program (`posix_spawn()`, no environment), with `/dev/null` as
-stdin, and what they print goes to the log. They are not built by `generic_init`: the device
+stdin. What they print goes to the kernel log line by line as it is
+printed: stdout and stderr are a pseudo terminal, so that the tools flush
+every line (to a pipe they would only flush at the end), and `generic_init`
+logs the lines itself, since its own stdout and stderr are not `/dev/kmsg`
+before the hand-over to init. Without devpts, a pipe is used and the output
+comes at the end. They are not built by `generic_init`: the device
 tree puts them in the ramdisk. A missing tool, or a failure, is logged
 and the boot goes on. Not in recovery mode, and not for a read-only device.
 

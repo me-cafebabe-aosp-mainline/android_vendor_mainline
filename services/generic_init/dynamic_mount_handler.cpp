@@ -1310,17 +1310,21 @@ bool CanQuitUeventd(bool print_log) {
     return ret;
 }
 
-void OnPostBlockDevices(bool is_recovery_mode) {
-    Fstab fstab;
-    OverlayLowerdirs overlay_lowerdirs;
+void OnPreSwitchRoot(void) {
     // User data in the android dir: the device was written as an image, and may be bigger. It is
-    // not mounted here yet, which resizing needs.
+    // not mounted yet, which resizing needs, and the tools are in the ramdisk, which is gone once
+    // the root is switched.
     const auto& android_dev = block_device_for_android_dir;
-    if (!is_recovery_mode && need_android_dir && android_dev != nullptr && android_dev->rw &&
+    if (need_android_dir && android_dev != nullptr && android_dev->rw &&
         (param_mount_userdata == MountUserdataParam::IMAGES ||
          param_mount_userdata == MountUserdataParam::BIND_MOUNT_DIR)) {
         ResizeFs::GrowToDevice(android_dev->devpath, android_dev->fs_type);
     }
+}
+
+void OnPostBlockDevices(bool is_recovery_mode) {
+    Fstab fstab;
+    OverlayLowerdirs overlay_lowerdirs;
     std::string android_dir_path = need_android_dir ? MountAndroidDir() : "";
 
     // Recovery mode only mounts the firmware

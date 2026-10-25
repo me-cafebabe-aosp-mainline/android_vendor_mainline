@@ -629,6 +629,9 @@ int FirstStageMain(int argc, char** argv) {
             // Load kernel modules, create devices, and parse partitions, until ready
             ueventd_main(ParseConfig({"/system/etc/ueventd.ramdisk.rc"}), true);
 
+            // Needs the tools of the ramdisk
+            DynamicMountHandler::OnPreSwitchRoot();
+
             mkdir("/first_stage_ramdisk", 0755);
             PrepareSwitchRoot();
             // SwitchRoot() must be called with a mount point as the target, so we bind mount the

@@ -35,16 +35,17 @@ kernel ──► generic_init (ramdisk, static) ──► /system/bin/init selin
 | 7 | Copy ramdisk props, handle `/force_debuggable` | as in AOSP |
 | 8 | Create the temp mount directories, read the mount parameters | `DynamicMountHandler::OnPreBlockDevices()` |
 | 9 | Run ueventd with `/system/etc/ueventd.ramdisk.rc` until enough block devices exist | `ueventd_main(config, first_run=true)` |
-| 10 | Move `snapuserd` if needed, switch root to `/first_stage_ramdisk` | `PrepareSwitchRoot()`, `SwitchRoot()` |
-| 11 | Build the fstab and mount everything | `DynamicMountHandler::OnPostBlockDevices()` |
-| 12 | Run `/vendor/bin/vendor_init` if it exists | `ExecuteVendorInitProgram()` |
-| 13 | Load kernel modules from `/vendor/lib/modules` | `LoadKernelModules()` |
-| 14 | Run ueventd with `/system/etc/ueventd.rc` (from the mounted system) until quiet | `ueventd_main(config, first_run=false)` |
-| 15 | Console mode 3: start `/vendor/bin/bootstrap/sh` | `StartConsole()` |
-| 16 | Free the old ramdisk if the root changed | `FreeRamdisk()` |
-| 17 | `exec /system/bin/init selinux_setup` | `FirstStageMain()` |
+| 10 | Run the filesystem tools of the ramdisk on the android dir device (growing it), the last thing that needs the ramdisk | `DynamicMountHandler::OnPreSwitchRoot()` |
+| 11 | Move `snapuserd` if needed, switch root to `/first_stage_ramdisk` | `PrepareSwitchRoot()`, `SwitchRoot()` |
+| 12 | Build the fstab and mount everything | `DynamicMountHandler::OnPostBlockDevices()` |
+| 13 | Run `/vendor/bin/vendor_init` if it exists | `ExecuteVendorInitProgram()` |
+| 14 | Load kernel modules from `/vendor/lib/modules` | `LoadKernelModules()` |
+| 15 | Run ueventd with `/system/etc/ueventd.rc` (from the mounted system) until quiet | `ueventd_main(config, first_run=false)` |
+| 16 | Console mode 3: start `/vendor/bin/bootstrap/sh` | `StartConsole()` |
+| 17 | Free the old ramdisk if the root changed | `FreeRamdisk()` |
+| 18 | `exec /system/bin/init selinux_setup` | `FirstStageMain()` |
 
-Steps 8 to 14 are what replace the AOSP first stage mount. The details
+Steps 8 to 15 are what replace the AOSP first stage mount. The details
 are in [DYNAMIC_MOUNT.md](DYNAMIC_MOUNT.md) and [UEVENTD.md](UEVENTD.md).
 
 ## Recovery boot

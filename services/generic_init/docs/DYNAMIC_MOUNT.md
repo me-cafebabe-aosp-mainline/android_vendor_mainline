@@ -18,7 +18,8 @@ fstab is generated from what was found, and it is mounted.
 | Before | `OnPreBlockDevices()` | Before ueventd starts | Make the work directories, read the parameters and the addon fstabs |
 | During | `OnBlockDeviceAdd()` | For each block device uevent | Probe the device, update the picture of what was found |
 | Exit test | `CanQuitUeventd()` | After each uevent | Are all required pieces found? |
-| After | `OnPostBlockDevices()` | After ueventd quit | Generate the fstab and mount |
+| Before the root switch | `OnPreSwitchRoot()` | After ueventd quit | Run the tools of the ramdisk that need a device not mounted yet (growing the android dir filesystem) |
+| After | `OnPostBlockDevices()` | After the root switch | Generate the fstab and mount |
 
 Work directories, all under `/mnt/vendor/generic_init/`:
 
@@ -190,8 +191,10 @@ partition) is never used for anything else, even with a `build.prop`.
 
 With `mount_userdata=imgs` or `bind_mount_dir`, user data lives on the
 device of the Android directory, which is often an image written to a
-bigger partition, so the filesystem is shorter than the device. Before
-`MountAndroidDir()`, while the device is not mounted, `resize_fs.cpp` reads
+bigger partition, so the filesystem is shorter than the device. In
+`OnPreSwitchRoot()`, after ueventd and before the root is switched to
+`/first_stage_ramdisk` (the tools are in the ramdisk, which is not
+reachable after that), while the device is not mounted, `resize_fs.cpp` reads
 the size of the filesystem from its superblock, and if the device is bigger
 by 64 MiB or more:
 

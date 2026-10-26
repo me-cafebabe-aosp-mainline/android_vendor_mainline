@@ -32,6 +32,17 @@ AOSP `/system/bin/init`.
 | Includes | A copy of `ueventd`, wired into the boot sequence |
 | Does not replace | The second stage: `/system/bin/init` still runs as usual |
 
+## How the device trees use it
+
+All of them start it with `rdinit=/system/bin/generic_init`. What
+differs is which features they use:
+
+| Tree | What it uses |
+|------|--------------|
+| `device/mainline/generic` | Everything, because the hardware is unknown: partitions are found at boot, the Android directory can be on any disk or in an ISO, `androidboot.mount_*` is chosen per install method, and an addon fstab from the ramdisk adds the rest |
+| `device/samsung/ss8916` | The images of the Android directory on the `userdata` partition (`androidboot.android_dir_dev=PARTLABEL=userdata`, `mount_system=imgs`, `mount_userdata=bind_mount_dir`) and the firmware from its `firmware` subdirectory (`mount_firmware=only_android_dir`), so the phone's partition table stays untouched. The other partitions come from a normal fstab |
+| `device/apple/snowcastle` | Two layouts, chosen by `SNOWCASTLE_PARTITION_SCHEME`: `apfs` takes images and firmware from the Android directory with `tmpfs` as userdata, and `normal` uses the standard partitions (`std_parts`). It is optional (`SNOWCASTLE_USE_GENERIC_INIT`), and the firmware generation script reads the directory that `generic_init` mounted |
+
 ## What it adds to AOSP init
 
 | Feature | Where |

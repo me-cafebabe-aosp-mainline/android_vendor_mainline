@@ -11,7 +11,8 @@ of the repo you work in, then the docs it points to.
 ## Layers
 
 ```
- device trees      basic_x86_64_pc, xiaomi/*, apple/snowcastle, virt/*
+ device trees      basic_x86_64_pc, xiaomi/*, qualcomm/qrd8937, samsung/ss8916,
+                   apple/snowcastle, virt/*
       |
  family trees      e.g. xiaomi/mi7150-mainline (shared by its devices)
       |
@@ -70,7 +71,9 @@ trees never depend on one. See
 | `device/xiaomi/mi710-mainline` | Family tree (SDM710) |
 | `device/xiaomi/pyxis_mainline` | Thin device on `mi710-mainline` |
 | `device/xiaomi/mi89xx-mainline` | Family tree (MSM89xx), several devices and kernel forks |
-| `device/apple/snowcastle` | Apple devices (HoolockLinux kernels, m1n1) |
+| `device/qualcomm/qrd8937` | Single Qualcomm device (MSM8937 QRD); the entry point for bringing up a new Qualcomm device |
+| `device/samsung/ss8916` | Samsung MSM8916 devices; uses `generic_init` while the rest is a normal device tree |
+| `device/apple/snowcastle` | Apple devices (HoolockLinux kernels, m1n1); uses `generic_init` |
 | `device/virt/*` | Virtual machines: `virt-common`, `virtio-common`, `vboxware`, `virtio_*` |
 
 ## Dependencies (not edited here)
